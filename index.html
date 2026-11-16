@@ -247,8 +247,32 @@ const EX = {
   farmer:{n:"Farmer's Carry",t:'carry',inc:2,cue:'Tall posture, crushing grip, short quick steps. 40m per set, weight per hand.'},
   plank:{n:'Plank',t:'time',inc:5,cue:'Squeeze glutes and quads, ribs down, breathe. Target is seconds per set.'},
   knee:{n:'Hanging Knee Raise',t:'bw',inc:0,cue:'No swinging. Curl the pelvis up, lower for 2 seconds.'},
+  curl:{n:'DB Bicep Curl',t:'db',inc:1,g:'Arms',cue:'Elbows pinned, no swinging. Squeeze at the top, 2 seconds down.'},
+  hammer:{n:'Hammer Curl',t:'db',inc:1,g:'Arms',cue:'Thumbs up, elbows still. Control the lowering.'},
+  pushdown:{n:'Tricep Pushdown',t:'mc',inc:2.5,g:'Arms',cue:'Elbows tucked to your sides, full lockout, slow return.'},
+  skull:{n:'EZ-Bar Skull Crusher',t:'bb',inc:2.5,g:'Arms',cue:'Lower to forehead with elbows pointing up, press back.'},
+  legext:{n:'Leg Extension',t:'mc',inc:5,g:'Legs',cue:'Pause at the top, squeeze quads, 2 seconds down.'},
+  legcurl:{n:'Lying Leg Curl',t:'mc',inc:5,g:'Legs',cue:'Hips pressed down, curl fully, slow on the way back.'},
+  calf:{n:'Calf Raise',t:'mc',inc:5,g:'Legs',cue:'Full stretch at the bottom, pause at the top.'},
+  goblet:{n:'Goblet Squat',t:'db',inc:2,g:'Legs',cue:'Hold the bell at your chest, elbows inside knees, sit deep.'},
+  facepull:{n:'Face Pull',t:'mc',inc:2.5,g:'Back & shoulders',cue:'Pull to the eyes, elbows high, rotate hands back.'},
+  shrug:{n:'DB Shrug',t:'db',inc:2,g:'Back & shoulders',cue:'Straight up to the ears, 1-second hold, no rolling.'},
+  pullup:{n:'Pull-ups',t:'bw',inc:0,g:'Back & shoulders',cue:'Full hang to chin over bar. Use a band if needed.'},
+  arnold:{n:'Arnold Press',t:'db',inc:2,g:'Back & shoulders',cue:'Rotate palms out as you press. Control down.'},
+  cablefly:{n:'Cable Fly',t:'mc',inc:2.5,g:'Chest',cue:'Soft elbows, hug a tree, squeeze the chest.'},
+  dips:{n:'Dips',t:'bw',inc:0,g:'Chest',cue:'Slight lean forward, elbows back, shoulders down.'},
+  pushup:{n:'Push-ups',t:'bw',inc:0,g:'Chest',cue:'Body in one line, chest to the floor.'},
+  abwheel:{n:'Ab Wheel Rollout',t:'bw',inc:0,g:'Core',cue:'Ribs down, roll as far as you can hold a flat back.'},
+  russian:{n:'Russian Twist',t:'bw',inc:0,g:'Core',cue:'Lean back, feet up if you can, touch each side.'},
+  deadbug:{n:'Dead Bug',t:'bw',inc:0,g:'Core',cue:'Lower back flat, opposite arm and leg, slow.'},
+  kbswing:{n:'Kettlebell Swing',t:'db',inc:4,g:'Conditioning',cue:'Hinge, snap the hips, bell floats to chest height.'},
+  skierg:{n:'SkiErg',t:'time',inc:5,g:'Conditioning',cue:'Hinge and drive down with lats and hips. Seconds per set.'},
+  rowerg:{n:'Rower',t:'time',inc:5,g:'Conditioning',cue:'Legs, hips, then arms. Seconds per set.'},
+  bike:{n:'Assault Bike',t:'time',inc:5,g:'Conditioning',cue:'Push and pull together. Seconds per set.'},
+  wallball:{n:'Wall Balls',t:'bw',inc:0,g:'Conditioning',cue:'Full squat, drive and throw to the target.'},
 };
-const START = {squat:80,bench:65,row:60,rdl:80,deadlift:110,ohp:42.5,pulldown:60,lunge:16,legpress:140,incline:24,cablerow:55,hipthrust:90,lateral:10,bss:14,farmer:30,plank:45,knee:0};
+const START = {squat:80,bench:65,row:60,rdl:80,deadlift:110,ohp:42.5,pulldown:60,lunge:16,legpress:140,incline:24,cablerow:55,hipthrust:90,lateral:10,bss:14,farmer:30,plank:45,knee:0,
+  curl:12,hammer:12,pushdown:25,skull:25,legext:45,legcurl:40,calf:60,goblet:20,facepull:20,shrug:26,pullup:0,arnold:14,cablefly:15,dips:0,pushup:0,abwheel:0,russian:0,deadbug:0,kbswing:20,skierg:60,rowerg:60,bike:45,wallball:0};
 // [id, sets, repLow, repHigh, restSec]
 const DAYS = [
   {key:'d1',dow:'MON',full:'Monday',name:'Foundation',focus:'Squat · Bench · Row',ex:[['squat',4,6,8,150],['bench',4,6,8,120],['row',3,8,10,90],['rdl',3,8,10,90],['plank',3,1,1,45]]},
@@ -611,6 +635,94 @@ function chart(){
   </svg><div class="muted"><span style="color:var(--cyan)">- - -</span> plan to ${G().target}kg &nbsp; <span style="color:var(--volt)">●</span> your weigh-ins</div>`;
 }
 
+/* ================= EXTRAS: added exercises + activities ================= */
+function dayEx(w,i){ const d=DAYS[i]; return d.ex.concat(((S.extraDay||{})[d.key])||[]).concat(((S.extra||{})[logKey(w,d.key)])||[]); }
+function setKey(e,k){ return e[5]&&e[5].uid ? e[0]+'@x'+e[5].uid : e[0]+'@'+k; }
+const ACTS=[['football','Football',7],['5aside','5-a-side',8],['running','Running',9.8],['walk','Walk',3.5],['cycling','Cycling',7.5],['swim','Swimming',7],['basketball','Basketball',6.5],['padel','Padel',6],['tennis','Tennis',7.3],['boxing','Boxing',9],['hyrox','Hyrox / circuit',8],['hike','Hike',6],['yoga','Yoga / mobility',2.5],['other','Other',5]];
+const DISTACTS=['running','walk','cycling','swim','hike'];
+function actName(id){ const a=ACTS.find(x=>x[0]===id); return a?a[1]:'Activity'; }
+function actKcal(id,min,int){ const a=ACTS.find(x=>x[0]===id)||ACTS[ACTS.length-1]; const m={easy:.8,moderate:1,hard:1.2}[int]||1; return Math.round(Math.max(1,a[2]-1)*m*latestWeight()*(min/60)); }
+function actsOn(d){ return ((S.acts||{})[d])||[]; }
+function actsBetween(a,b){ const out=[]; Object.entries(S.acts||{}).forEach(([d,list])=>{ const x=parseD(d); if(x>=a&&x<=b) list.forEach(it=>out.push({...it,date:d})); }); return out.sort((p,q)=>p.date<q.date?-1:1); }
+function actCard(a,date){ return `<div class="lift" style="align-items:center"><div style="width:42px;height:42px;border-radius:14px;background:var(--voltbg);display:grid;place-items:center;color:var(--volt);flex:none">${ICON.fuel}</div>
+  <div class="ln">${esc(actName(a.act))} · ${a.min} min<span>${cap(a.int)}${a.km?' · '+a.km+' km':''}${date?' · '+parseD(date).toLocaleDateString('en-GB',{weekday:'short',day:'numeric'}):''}${a.note?' · '+esc(a.note):''}</span></div>
+  <div style="text-align:right"><div style="font-weight:600">~${a.kcal}</div><div class="muted">kcal</div></div><button class="btn sm" style="width:34px;padding:0" data-act="rmact" data-date="${date}" data-uid="${a.uid}" aria-label="Remove">✕</button></div>`; }
+function openAddExercise(){
+  const d=DAYS[view.d]; const groups={};
+  Object.entries(EX).forEach(([id,x])=>{ const g=x.g||'Programme lifts'; (groups[g]=groups[g]||[]).push([id,x.n]); });
+  const order=['Arms','Legs','Back & shoulders','Chest','Core','Conditioning','Programme lifts'];
+  const opts=order.filter(g=>groups[g]).map(g=>`<optgroup label="${g}">${groups[g].map(([id,n])=>`<option value="${id}">${esc(n)}</option>`).join('')}</optgroup>`).join('');
+  $('#sheet').innerHTML=`<div class="kicker">${d.full} · ${d.name}</div><div style="font-size:26px;font-weight:300;letter-spacing:-.6px;margin-top:4px">Add exercise<span style="color:var(--volt)">.</span></div>
+   <label style="display:block;margin-top:14px"><div class="muted" style="margin-bottom:5px">Exercise</div><select class="inp" id="ax-ex">${opts}</select></label>
+   <div class="grid2" style="margin-top:2px">
+     <label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Sets</div><select class="inp" id="ax-sets">${[2,3,4,5].map(n=>`<option ${n===3?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label style="display:block;margin-top:12px" id="ax-repwrap"><div class="muted" style="margin-bottom:5px">Reps</div><select class="inp" id="ax-reps">${['5','6–8','8–10','10–12','12–15','15–20'].map(r=>`<option ${r==='10–12'?'selected':''}>${r}</option>`).join('')}</select></label>
+   </div>
+   <label style="display:block;margin-top:12px" id="ax-wwrap"><div class="muted" style="margin-bottom:5px" id="ax-wlbl">Weight (kg)</div><input class="inp" id="ax-w" type="number" inputmode="decimal"></label>
+   <div class="muted" style="margin:14px 0 6px">Keep it</div>
+   <div style="display:flex;gap:8px"><button class="btn sm p" style="flex:1" data-act="axscope" data-v="once" id="ax-once">Just today</button><button class="btn sm" style="flex:1" data-act="axscope" data-v="every" id="ax-every">Every ${d.full}</button></div>
+   <div class="grid2" style="margin-top:18px"><button class="btn" data-act="mcancel">Cancel</button><button class="btn p" data-act="axsave">Add</button></div>`;
+  $('#modal').classList.add('on'); axScope='once'; axSync();
+}
+let axScope='once';
+function axSync(){ const id=$('#ax-ex').value, X=EX[id]; const v=S.weights[id]!=null?S.weights[id]:(START[id]||0);
+  $('#ax-wwrap').style.display = X.t==='bw'?'none':'block'; $('#ax-repwrap').style.display = (X.t==='time'||X.t==='carry')?'none':'block';
+  $('#ax-wlbl').textContent = X.t==='time'?'Seconds per set':X.t==='db'||X.t==='carry'?'Weight per dumbbell (kg)':'Weight (kg)'; $('#ax-w').value=fmtKg(v); }
+function saveAddExercise(){
+  const d=DAYS[view.d], id=$('#ax-ex').value, X=EX[id], sets=+$('#ax-sets').value, rr=$('#ax-reps').value.split('–').map(Number);
+  const lo=(X.t==='time'||X.t==='carry')?1:rr[0], hi=(X.t==='time'||X.t==='carry')?1:(rr[1]||rr[0]);
+  const wv=parseFloat($('#ax-w').value); if(X.t!=='bw' && wv>=0) S.weights[id]=Math.round(wv*10)/10;
+  const entry=[id,sets,lo,hi,X.g==='Core'?45:X.g==='Conditioning'?60:75,{uid:uid(),scope:axScope}];
+  if(axScope==='every'){ S.extraDay=S.extraDay||{}; (S.extraDay[d.key]=S.extraDay[d.key]||[]).push(entry); }
+  else { S.extra=S.extra||{}; const k=logKey(view.w,d.key); (S.extra[k]=S.extra[k]||[]).push(entry); }
+  save(); closeModal(); render(); say(`${X.n} added.`);
+  setTimeout(()=>{ const c=document.querySelectorAll('.ex'); if(c.length) c[c.length-1].scrollIntoView({behavior:'smooth',block:'center'}); },60);
+}
+function removeExtra(u){
+  const strip=o=>{ if(!o) return; Object.keys(o).forEach(k=>{ o[k]=o[k].filter(e=>!(e[5]&&e[5].uid===u)); }); };
+  strip(S.extra); strip(S.extraDay); save(); render(); say('Removed.');
+}
+let actInt='moderate';
+function openAddActivity(date){
+  actInt='moderate';
+  $('#sheet').innerHTML=`<div class="kicker">Beyond the plan</div><div style="font-size:26px;font-weight:300;letter-spacing:-.6px;margin-top:4px">Log activity<span style="color:var(--volt)">.</span></div>
+   <label style="display:block;margin-top:14px"><div class="muted" style="margin-bottom:5px">Activity</div><select class="inp" id="ac-act">${ACTS.map(a=>`<option value="${a[0]}">${a[1]}</option>`).join('')}</select></label>
+   <div class="grid2"><label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Date</div><input class="inp" id="ac-date" type="date" value="${date||ymd(today())}" max="${ymd(today())}"></label>
+   <label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Minutes</div><input class="inp" id="ac-min" type="number" inputmode="numeric" value="60"></label></div>
+   <div style="display:flex;gap:6px;margin-top:8px">${[30,45,60,90].map(m=>`<button class="chip" data-act="acmin" data-v="${m}">${m} min</button>`).join('')}</div>
+   <div class="muted" style="margin:14px 0 6px">Intensity</div>
+   <div style="display:flex;gap:8px">${['easy','moderate','hard'].map(x=>`<button class="btn sm ${x==='moderate'?'p':''}" style="flex:1" data-act="acint" data-v="${x}" id="ac-${x}">${cap(x)}</button>`).join('')}</div>
+   <label style="display:none;margin-top:12px" id="ac-kmwrap"><div class="muted" style="margin-bottom:5px">Distance (km, optional)</div><input class="inp" id="ac-km" type="number" inputmode="decimal" placeholder="e.g. 5"></label>
+   <label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Notes (optional)</div><input class="inp" id="ac-note" placeholder="e.g. Sunday league, scored twice"></label>
+   <div class="muted" id="ac-est" style="margin-top:10px"></div>
+   <div class="grid2" style="margin-top:16px"><button class="btn" data-act="mcancel">Cancel</button><button class="btn p" data-act="acsave">Log it</button></div>`;
+  $('#modal').classList.add('on'); acSync();
+}
+function acSync(){ const a=$('#ac-act').value; $('#ac-kmwrap').style.display=DISTACTS.includes(a)?'block':'none'; const m=parseFloat($('#ac-min').value)||0; $('#ac-est').textContent=m?`≈ ${actKcal(a,m,actInt)} kcal burned at your weight`:''; }
+function saveActivity(){
+  const act=$('#ac-act').value, date=$('#ac-date').value||ymd(today()), min=Math.round(parseFloat($('#ac-min').value)||0);
+  if(!(min>0&&min<600)) { $('#ac-est').textContent='Add how many minutes.'; return; }
+  const km=DISTACTS.includes(act)?(parseFloat($('#ac-km').value)||0):0;
+  const it={uid:uid(),act,min,int:actInt,km:km||null,note:($('#ac-note').value||'').trim().slice(0,60),kcal:actKcal(act,min,actInt)};
+  S.acts=S.acts||{}; (S.acts[date]=S.acts[date]||[]).push(it); save(); closeModal(); render(); say(`${actName(act)} logged. ${it.kcal} kcal.`);
+}
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-act]'); if(!b) return;
+  switch(b.dataset.act){
+    case 'addex': openAddExercise(); break;
+    case 'axscope': axScope=b.dataset.v; $('#ax-once').classList.toggle('p',axScope==='once'); $('#ax-every').classList.toggle('p',axScope==='every'); break;
+    case 'axsave': saveAddExercise(); break;
+    case 'rmex': removeExtra(b.dataset.uid); break;
+    case 'addact': openAddActivity(b.dataset.date); break;
+    case 'acint': actInt=b.dataset.v; ['easy','moderate','hard'].forEach(x=>$('#ac-'+x).classList.toggle('p',x===actInt)); acSync(); break;
+    case 'acmin': $('#ac-min').value=b.dataset.v; acSync(); break;
+    case 'acsave': saveActivity(); break;
+    case 'rmact': { const d=b.dataset.date; if(S.acts&&S.acts[d]){ S.acts[d]=S.acts[d].filter(x=>x.uid!==b.dataset.uid); if(!S.acts[d].length) delete S.acts[d]; save(); render(); say('Removed.'); } } break;
+  }
+});
+document.addEventListener('change',ev=>{ if(ev.target.id==='ax-ex') axSync(); if(ev.target.id==='ac-act') acSync(); });
+document.addEventListener('input',ev=>{ if(ev.target.id==='ac-min') acSync(); });
+
 /* ================= RENDER: DAY ================= */
 function renderDay(){
   const w=view.w, i=view.d, d=DAYS[i], W=WEEKS[w];
@@ -627,10 +739,14 @@ function renderDay(){
   else { h+=`<div><div class="kicker">Ready</div><div class="sub">Start the 60-minute clock when you walk in.</div></div><button class="btn p" data-act="start">Start</button>`; }
   h+=`</div>`;
   h+=checklist('warm','Warm-up & mobility','8 min',WARM,log.warm,openWarm);
-  d.ex.forEach((e,k)=>{ h+=exCard(w,i,k,e,log); });
+  dayEx(w,i).forEach((e,k)=>{ h+=exCard(w,i,k,e,log); });
+  h+=`<button class="card" style="width:100%;margin-top:12px;display:flex;align-items:center;justify-content:center;gap:10px;border-style:dashed;border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.03);color:var(--tx2);font-weight:600" data-act="addex"><span style="font-size:22px;color:var(--volt);line-height:1">+</span> Add exercise</button>`;
   h+=checklist('cool','Cool-down stretch','5 min',COOL,log.cool,openCool);
   if(!log.done) h+=`<button class="btn p full" style="margin-top:20px;height:56px;font-size:19px" data-act="complete">Complete session</button><div class="muted" style="text-align:center;margin-top:8px">Hit the top of the rep range on every set → weight goes up automatically.</div>`;
   else if(log.summary) h+=`<div class="done-banner"><div class="kicker">Debrief</div><div class="sub" style="color:var(--tx);margin-top:6px">${esc(log.summary)}</div></div>`;
+  const dk=ymd(date), acts=actsOn(dk);
+  h+=`<h2>Beyond the plan<span class="acc">.</span></h2><div class="card">${acts.length?acts.map(a=>actCard(a,dk)).join(''):'<div class="sub">Played football or went for a run today? Log it here — it counts towards your week.</div>'}
+    <button class="btn full" style="margin-top:12px" data-act="addact" data-date="${dk}"><span style="color:var(--volt);font-size:20px">+</span> Log activity</button></div>`;
   return h;
 }
 function checklist(kind,title,mins,items,state,open){
@@ -639,15 +755,15 @@ function checklist(kind,title,mins,items,state,open){
   ${open?`<div style="margin-top:8px">${items.map((it,j)=>`<button class="check" style="width:100%;text-align:left" data-act="chk" data-k="${kind}" data-j="${j}"><div class="cb ${state[j]?'on':''}"></div><div class="t">${it[0]}<span>${it[1]}</span></div></button>`).join('')}</div>`:''}</div>`;
 }
 function exCard(w,i,k,e,log){
-  const [id,base,lo,hi,rest]=e; const X=EX[id]; const n=setsFor(w,k,base);
-  const arr=(log.sets&&log.sets[id+'@'+k])||[];
+  const [id,base,lo,hi,rest]=e; const X=EX[id]; const n=setsFor(w,k,base); const sk=setKey(e,k); const extra=e[5];
+  const arr=(log.sets&&log.sets[sk])||[];
   const wk=workW(w,id);
   const reps= X.t==='time'? `${fmtKg(S.weights[id])}s hold` : X.t==='carry'? '40m' : (lo===hi? lo : lo+'–'+hi)+(X.unit?' '+X.unit:'')+' reps';
   let right='';
   if(X.t==='bb'||X.t==='db'||X.t==='mc'||X.t==='carry') right=`<button class="wbtn" data-act="editW" data-id="${id}"><div class="w">${fmtKg(wk)}<small>kg</small></div><div class="e">${X.t==='db'||X.t==='carry'?'per hand · ':''}edit</div></button>`;
   else if(X.t==='time') right=`<button class="wbtn" data-act="editW" data-id="${id}"><div class="w">${fmtKg(S.weights[id])}<small>s</small></div><div class="e">edit</div></button>`;
   else right=`<div class="wbtn"><div class="w" style="font-size:16px">BW</div><div class="e">bodyweight</div></div>`;
-  let h=`<div class="card ex"><div class="exh"><div class="exn"><div class="num">${String(k+1).padStart(2,'0')} · ${k===0?'LEAD LIFT':'REST '+(rest>=60?Math.floor(rest/60)+':'+String(rest%60).padStart(2,'0'):rest+'s')}</div><div class="nm">${X.n}</div><div class="pr">${n} × ${reps}${k===0?' · rest '+Math.floor(rest/60)+':'+String(rest%60).padStart(2,'0'):''}</div></div>${right}</div>
+  let h=`<div class="card ex"><div class="exh"><div class="exn"><div class="num">${String(k+1).padStart(2,'0')} · ${extra?(extra.scope==='every'?'ADDED · EVERY WEEK':'ADDED · TODAY'):k===0?'LEAD LIFT':'REST '+(rest>=60?Math.floor(rest/60)+':'+String(rest%60).padStart(2,'0'):rest+'s')}</div><div class="nm">${X.n}</div><div class="pr">${n} × ${reps}${k===0?' · rest '+Math.floor(rest/60)+':'+String(rest%60).padStart(2,'0'):''}</div></div>${right}</div>
   <div class="cue">${X.cue}</div><div class="sets">`;
   for(let s=0;s<n;s++){
     const st=arr[s]||{};
@@ -655,8 +771,8 @@ function exCard(w,i,k,e,log){
     const counted = !(X.t==='time'||X.t==='carry');
     h+=`<div class="set ${st.done?'done':''}"><div class="sn">SET ${s+1}</div>
       <div class="tg">${st.done && st.w!=null && X.t!=='bw' && X.t!=='time' ? `<b>${fmtKg(st.w)}kg</b>` : ''}${X.t==='time'?`<b>${fmtKg(S.weights[id])}s</b>`:X.t==='carry'?'<b>40m</b>':''}</div>
-      ${counted?`<div class="step"><button data-act="rep" data-ex="${id}" data-k="${k}" data-s="${s}" data-v="-1" aria-label="fewer reps">−</button><div class="val">${r}</div><button data-act="rep" data-ex="${id}" data-k="${k}" data-s="${s}" data-v="1" aria-label="more reps">+</button></div>`:''}
-      <button class="tick" data-act="set" data-ex="${id}" data-k="${k}" data-s="${s}" data-rest="${rest}">${ICON.tick}</button></div>`;
+      ${counted?`<div class="step"><button data-act="rep" data-ex="${id}" data-k="${k}" data-key="${sk}" data-s="${s}" data-v="-1" aria-label="fewer reps">−</button><div class="val">${r}</div><button data-act="rep" data-ex="${id}" data-k="${k}" data-key="${sk}" data-s="${s}" data-v="1" aria-label="more reps">+</button></div>`:''}
+      <button class="tick" data-act="set" data-ex="${id}" data-k="${k}" data-key="${sk}" data-s="${s}" data-rest="${rest}">${ICON.tick}</button></div>`;
   }
   const doneSets=arr.filter(x=>x&&x.done);
   let foot='';
@@ -666,7 +782,7 @@ function exCard(w,i,k,e,log){
   else if(X.t==='carry') foot=`All sets done → +${X.inc}kg next time`;
   else foot=`All sets at ${hi} → +${fmtKg(X.inc)}kg next time`;
   const ready = doneSets.length>=n && X.t!=='bw' && !WEEKS[w].deload && (X.t==='time'||X.t==='carry'||doneSets.every(x=>x.r>=hi));
-  h+=`</div><div class="exfoot"><span class="${ready?'hint':''}">${ready?'▲ Weight goes up on completion':foot}</span><span>${doneSets.length}/${n}</span></div></div>`;
+  h+=`</div><div class="exfoot"><span class="${ready?'hint':''}">${ready?'▲ Weight goes up on completion':foot}</span><span>${extra?`<button data-act="rmex" data-uid="${extra.uid}" style="color:var(--tx3);margin-right:12px">Remove</button>`:''}${doneSets.length}/${n}</span></div></div>`;
   return h;
 }
 
@@ -700,9 +816,9 @@ document.addEventListener('click',ev=>{
       const items=b.dataset.k==='warm'?WARM:COOL; if(arr.filter(Boolean).length===items.length) say(b.dataset.k==='warm'?'Mobility done. Lift.':'Cool-down done.'); } break;
     case 'start': { const log=getLog(view.w,DAYS[view.d].key,true); log.startedAt=Date.now(); save(); render(); say('Clock live. Sixty minutes.'); } break;
     case 'reopen': { const log=getLog(view.w,DAYS[view.d].key,true); log.done=false; save(); render(); say('Reopened.'); } break;
-    case 'rep': { const d=DAYS[view.d]; const e=d.ex[+b.dataset.k]; const r=setRecord(view.w,d.key,b.dataset.ex+'@'+b.dataset.k,+b.dataset.s);
+    case 'rep': { const d=DAYS[view.d]; const e=dayEx(view.w,view.d)[+b.dataset.k]; const r=setRecord(view.w,d.key,b.dataset.key||b.dataset.ex+'@'+b.dataset.k,+b.dataset.s);
       const cur=r.r!=null?r.r:e[3]; r.r=Math.max(0,Math.min(30,cur+(+b.dataset.v))); save(); render(); } break;
-    case 'set': { const d=DAYS[view.d]; const k=+b.dataset.k; const e=d.ex[k]; const id=b.dataset.ex; const r=setRecord(view.w,d.key,id+'@'+k,+b.dataset.s);
+    case 'set': { const d=DAYS[view.d]; const k=+b.dataset.k; const e=dayEx(view.w,view.d)[k]; const id=b.dataset.ex; const r=setRecord(view.w,d.key,b.dataset.key||id+'@'+k,+b.dataset.s);
       if(r.done){ r.done=false; } else { r.done=true; if(r.r==null) r.r=e[3]; r.w=workW(view.w,id); startRest(+b.dataset.rest);
         const log=getLog(view.w,d.key,true); if(!log.startedAt) log.startedAt=Date.now();
         if(r.r<e[2] && EX[id].t!=='time' && EX[id].t!=='carry') say(`${r.r} reps. Hold weight.`);
@@ -751,8 +867,8 @@ function complete(){
   if(log.done) return;
   const ups=[], holds=[];
   if(!WEEKS[w].deload){
-    d.ex.forEach(([id,base,lo,hi],k)=>{
-      const X=EX[id]; const n=setsFor(w,k,base); const arr=(log.sets[id+'@'+k]||[]).filter(x=>x&&x.done);
+    dayEx(w,view.d).forEach((e,k)=>{ const [id,base,lo,hi]=e;
+      const X=EX[id]; const n=setsFor(w,k,base); const arr=(log.sets[setKey(e,k)]||[]).filter(x=>x&&x.done);
       if(arr.length<n || X.t==='bw') return;
       if(X.t==='time'){ S.weights[id]+=X.inc; ups.push(`${X.n} → ${S.weights[id]}s`); return; }
       if(X.t==='carry'){ const used=Math.max(...arr.map(x=>x.w||0)); S.weights[id]=Math.max(S.weights[id],used+X.inc); ups.push(`${X.n} → ${fmtKg(S.weights[id])}kg`); return; }
@@ -779,7 +895,7 @@ let editId=null;
 function openEdit(id){
   editId=id; const X=EX[id]; const step = X.t==='time'?5 : X.t==='db'||X.t==='carry'?2 : X.t==='mc'?5 : 2.5;
   const unit=X.t==='time'?'seconds':'kg';
-  const uses=DAYS.filter(d=>d.ex.some(e=>e[0]===id)).map(d=>d.dow).join(' + ');
+  const uses=DAYS.filter(d=>d.ex.some(e=>e[0]===id)).map(d=>d.dow).join(' + ')||'wherever you add it';
   $('#sheet').innerHTML=`<div class="kicker">Edit working ${X.t==='time'?'time':'weight'}</div><div style="font-family:var(--head);font-weight:700;font-size:24px;margin-top:4px">${X.n}</div>
    <div class="sub">Applies to every session that uses this lift (${uses}), this week and all future weeks.${X.t==='db'||X.t==='carry'?' Per dumbbell.':''}</div>
    <div class="big"><button data-act="mstep" data-v="${-step}">−</button><input id="mval" type="number" inputmode="decimal" step="${step}" value="${fmtKg(S.weights[id])}"><button data-act="mstep" data-v="${step}">+</button></div>
@@ -792,7 +908,7 @@ function saveEdit(){
   const id=editId; const old=S.weights[id]; S.weights[id]=Math.round(v*10)/10;
   // also update any not-yet-ticked sets: they read live, ticked sets keep their logged weight
   save(); closeModal(); render();
-  const uses=DAYS.filter(d=>d.ex.some(e=>e[0]===id)).map(d=>d.full).join(' and ');
+  const uses=DAYS.filter(d=>d.ex.some(e=>e[0]===id)).map(d=>d.full).join(' and ')||'every session';
   say(`${EX[id].n}, ${fmtKg(S.weights[id])}${EX[id].t==='time'?'s':'kg'}. All days.`);
 }
 function closeModal(){ $('#modal').classList.remove('on'); }
@@ -1438,6 +1554,10 @@ function renderWeek(){
   </div>
   <h2>Sessions</h2><div class="card">${DAYS.map((d,i)=>{ const dn=isDone(w,d.key), miss=!dn&&sessionDate(w,i)<today(), isT=c.w===w&&c.di===i;
     return `<button class="lift" style="width:100%;text-align:left" data-act="day" data-d="${i}"><div class="ln">${d.full} · ${d.name}<span>${d.focus}</span></div><span style="font-size:12px;font-weight:600;color:${dn?'var(--volt)':miss?'var(--red)':'var(--tx3)'}">${dn?'✓ DONE':miss?'MISSED':isT?'TODAY':'UPCOMING'}</span></button>`; }).join('')}</div>`;
+  { const a0=sessionDate(w,0), a1=new Date(a0.getTime()+6*864e5); const acts=actsBetween(a0,a1);
+    const mins=acts.reduce((t,a)=>t+a.min,0), kc=acts.reduce((t,a)=>t+a.kcal,0);
+    h+=`<h2>Beyond the plan<span class="acc">.</span></h2><div class="card">${acts.length?`<div class="sub" style="margin-bottom:6px">${acts.length} extra ${acts.length>1?'activities':'activity'} · ${mins} min · ~${kc} kcal</div>`+acts.map(a=>actCard(a,a.date)).join(''):'<div class="sub">Football, runs, padel — log anything outside the plan.</div>'}
+    <button class="btn full" style="margin-top:12px" data-act="addact" data-date="${ymd(today()<a1?today():a1)}"><span style="color:var(--volt);font-size:20px">+</span> Log activity</button></div>`; }
   const missed=DAYS.map((d,i)=>({d,i})).filter(x=>!isDone(w,x.d.key)&&sessionDate(w,x.i)<today());
   if(missed.length && c.w===w) h+=`<div class="card" style="margin-top:12px"><div class="kicker">Catch up</div><div class="sub" style="margin-top:4px">Got a free lunch? Make up a missed session.</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">${missed.map(x=>`<button class="btn sm p" data-act="day" data-d="${x.i}">${x.d.full}'s session</button>`).join('')}</div></div>`;
   if(ups.length) h+=`<h2>Going up<span class="acc">.</span></h2><div class="card">${ups.map(id=>`<div class="lift"><div class="ln">${EX[id].n}<span>earned this week</span></div><div style="font-weight:600">${fmtKg(used[id])} <span style="color:var(--tx3)">→</span> <span style="color:var(--volt)">${fmtKg(S.weights[id])}${EX[id].t==='time'?'s':'kg'}</span></div></div>`).join('')}</div>`;
