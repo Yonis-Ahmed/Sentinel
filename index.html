@@ -586,6 +586,7 @@ function renderHQ(){
   if(c.di<0 && !c.before && !c.after){ const dn=DAYS.filter(d=>isDone(c.w,d.key)).length; h+=`<button class="card" style="width:100%;text-align:left;margin-top:16px;display:block" data-act="wkgo" data-w="${c.w}"><div class="kicker">${c.w===5?'Deload':'Week '+c.w} · ${dn===4?'complete':dn+' of 4'}</div><div style="font-size:26px;font-weight:300;letter-spacing:-.6px;margin-top:6px">${dn===4?'Four for four':'Week review'}<span style="color:var(--volt)">.</span></div><div class="sub">${c.w<5?'Next: '+(c.w+1===5?'Deload':'Week '+(c.w+1))+' · '+WEEKS[c.w+1].tag+' — starts '+sessionDate(c.w+1,0).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}):'Block summary ready'}</div></button>`; }
   if(c.after) h+=`<button class="btn p full" style="margin-top:16px" data-act="block">Block complete — see summary</button>`;
   h+=fuelHQCard();
+  h+=stepsHQCard();
   h+=`<h2>Status</h2><div class="grid3">
     <div class="card stat"><div class="k">Sessions</div><div class="v">${dc}<small>/20</small></div><div class="bar"><i style="width:${dc/20*100}%"></i></div></div>
     <div class="card stat"><div class="k">Streak</div><div class="v">${streak()}</div><div class="n">straight</div></div>
@@ -640,6 +641,72 @@ function chart(){
    ${pts.map(p=>`<circle cx="${X(p.d)}" cy="${Y(p.kg)}" r="3.5" fill="#c8f56a"/>`).join('')}
   </svg><div class="muted"><span style="color:var(--cyan)">- - -</span> plan to ${G().target}kg &nbsp; <span style="color:var(--volt)">●</span> your weigh-ins</div>`;
 }
+
+
+/* ================= STEPS ================= */
+function stepGoal(){ return S.stepGoal||10000; }
+function stepsOn(d){ return ((S.steps||{})[d])||0; }
+function setSteps(d,n){ S.steps=S.steps||{}; S.steps[d]=Math.max(0,Math.round(n)); save(); }
+function stepsHQCard(){
+  const t=ymd(today()), n=stepsOn(t), g=stepGoal(), pct=Math.min(1,n/g);
+  const days=[...Array(7)].map((_,i)=>{ const d=new Date(today()); d.setDate(d.getDate()-6+i); return {d, n:stepsOn(ymd(d))}; });
+  const mx=Math.max(g,...days.map(x=>x.n));
+  const R=34, C=2*Math.PI*R;
+  return `<h2>Steps<span class="acc">.</span></h2><div class="card">
+   <div style="display:flex;align-items:center;gap:16px">
+     <svg width="84" height="84" viewBox="0 0 84 84" role="img" aria-label="${n} of ${g} steps"><circle cx="42" cy="42" r="${R}" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="8"/><circle cx="42" cy="42" r="${R}" fill="none" stroke="#c8f56a" stroke-width="8" stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${(C*(1-pct)).toFixed(1)}" transform="rotate(-90 42 42)" style="transition:stroke-dashoffset .6s"/><text x="42" y="47" text-anchor="middle" fill="#fff" font-size="15" font-weight="600">${Math.round(pct*100)}%</text></svg>
+     <div style="flex:1"><div style="font-size:30px;font-weight:300;letter-spacing:-1px">${n.toLocaleString('en-GB')}</div><div class="sub" style="font-size:13px">of ${g.toLocaleString('en-GB')} today${n>=g?' · <b style="color:var(--volt)">goal hit</b>':''}</div></div>
+   </div>
+   <div style="display:flex;align-items:flex-end;justify-content:space-between;height:64px;margin-top:14px;gap:6px">${days.map((x,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:100%;max-width:26px;height:${Math.max(3,Math.round(x.n/mx*48))}px;border-radius:7px;background:${x.n>=g?'#c8f56a':i===6?'rgba(200,245,106,.5)':'rgba(255,255,255,.18)'}"></div><span style="font-size:10px;color:var(--tx3)">${x.d.toLocaleDateString('en-GB',{weekday:'narrow'})}</span></div>`).join('')}</div>
+   <div class="grid2" style="margin-top:14px"><button class="btn sm p" data-act="stimport">Import from Health</button><button class="btn sm" data-act="stadd">Enter manually</button></div>
+   <button class="muted" style="margin-top:10px;width:100%;text-align:center" data-act="sthelp">How to set up the Health shortcut</button></div>`;
+}
+function openStepSheet(){
+  const t=ymd(today());
+  $('#sheet').innerHTML=`<div class="kicker">Steps</div><div style="font-size:26px;font-weight:300;letter-spacing:-.6px;margin-top:4px">Log steps<span style="color:var(--volt)">.</span></div>
+   <div class="grid2"><label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Date</div><input class="inp" id="st-date" type="date" value="${t}" max="${t}"></label>
+   <label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Steps (total for the day)</div><input class="inp" id="st-n" type="number" inputmode="numeric" value="${stepsOn(t)||''}" placeholder="e.g. 8432"></label></div>
+   <label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Daily goal</div><input class="inp" id="st-goal" type="number" inputmode="numeric" value="${stepGoal()}"></label>
+   <div class="grid2" style="margin-top:16px"><button class="btn" data-act="mcancel">Cancel</button><button class="btn p" data-act="stsave">Save</button></div>`;
+  $('#modal').classList.add('on');
+}
+function parseStepsText(t){ const m=String(t||'').replace(/[, ]/g,'').match(/(\d{2,6})/); return m?+m[1]:null; }
+async function importSteps(){
+  let txt=null;
+  try{ if(navigator.clipboard&&navigator.clipboard.readText) txt=await navigator.clipboard.readText(); }catch(e){ txt=null; }
+  const n=parseStepsText(txt);
+  if(n==null||n>200000){
+    $('#sheet').innerHTML=`<div class="kicker">Import from Health</div><div style="font-size:24px;font-weight:300;margin-top:4px">Paste your steps<span style="color:var(--volt)">.</span></div>
+     <div class="sub" style="margin-top:6px">Run your <b>SENTINEL Steps</b> shortcut first, then press and hold the box below → Paste.</div>
+     <input class="inp" id="st-paste" style="margin-top:14px" placeholder="Paste here" inputmode="numeric">
+     <div class="grid2" style="margin-top:16px"><button class="btn" data-act="mcancel">Cancel</button><button class="btn p" data-act="stpasteok">Import</button></div>`;
+    $('#modal').classList.add('on'); return;
+  }
+  setSteps(ymd(today()),n); render(); say(`${n.toLocaleString('en-GB')} steps logged.`);
+}
+function openStepHelp(){
+  $('#sheet').innerHTML=`<div class="kicker">One-time setup · 2 minutes</div><div style="font-size:24px;font-weight:300;margin-top:4px">Health → SENTINEL<span style="color:var(--volt)">.</span></div>
+   <div class="sub" style="margin-top:8px;line-height:1.7">
+   1. Open the <b>Shortcuts</b> app → <b>+</b> → name it <b>SENTINEL Steps</b>.<br>
+   2. Add <b>Find Health Samples</b>: Type <b>Steps</b>, Start Date <b>is today</b>.<br>
+   3. Add <b>Calculate Statistics</b>: <b>Sum</b> of the Health Samples.<br>
+   4. Add <b>Copy to Clipboard</b>.<br>
+   5. Optional: add it to your Home Screen or a widget for one tap.<br><br>
+   Each evening: run the shortcut → open SENTINEL → <b>Import from Health</b> → tap <b>Paste</b> if iPhone asks.</div>
+   <button class="btn p full" style="margin-top:16px" data-act="mcancel">Got it</button>`;
+  $('#modal').classList.add('on');
+}
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-act]'); if(!b) return;
+  switch(b.dataset.act){
+    case 'stadd': openStepSheet(); break;
+    case 'stimport': importSteps(); break;
+    case 'sthelp': openStepHelp(); break;
+    case 'stsave': { const d=$('#st-date').value||ymd(today()), n=parseFloat($('#st-n').value), g=parseFloat($('#st-goal').value);
+      if(g>=1000&&g<=50000) S.stepGoal=Math.round(g); if(n>=0&&n<200000) setSteps(d,n); else save(); closeModal(); render(); if(n>=0) say(`${Math.round(n).toLocaleString('en-GB')} steps logged.`); } break;
+    case 'stpasteok': { const n=parseStepsText($('#st-paste').value); if(n==null){ $('#st-paste').style.borderColor='#ff6b6b'; break; } setSteps(ymd(today()),n); closeModal(); render(); say(`${n.toLocaleString('en-GB')} steps logged.`); } break;
+  }
+});
 
 /* ================= EXTRAS: added exercises + activities ================= */
 function dayEx(w,i){ const d=DAYS[i]; return d.ex.concat(((S.extraDay||{})[d.key])||[]).concat(((S.extra||{})[logKey(w,d.key)])||[]); }
@@ -1560,9 +1627,10 @@ function renderWeek(){
   h+=`<div class="kicker">${w===5?'Deload week':'Week '+w} · ${W.tag} · ${fmtRange(w)}</div>
   <h1>${complete?'Week '+w+' complete':(past?'Week '+w+' done':'Week '+w)}<span class="acc">.</span></h1>
   <div class="sub">${complete?'Four for four. That\'s the standard.':past?done+' of 4 sessions logged.':W.note}</div>
-  <div class="grid3" style="margin-top:16px">
+  <div class="grid2" style="margin-top:16px">
     <div class="card stat"><div class="k">Sessions</div><div class="v">${done}<small>/4</small></div><div class="bar"><i style="width:${done*25}%"></i></div></div>
     <div class="card stat"><div class="k">Volume</div><div class="v">${weekVolume(w)>=1000?(weekVolume(w)/1000).toFixed(1)+'<small>t</small>':weekVolume(w)+'<small>kg</small>'}</div><div class="n">lifted</div></div>
+    <div class="card stat"><div class="k">Steps</div><div class="v">${(()=>{ const a=sessionDate(w,0); let t=0,c=0; for(let i=0;i<7;i++){ const d=new Date(a); d.setDate(a.getDate()+i); const n=stepsOn(ymd(d)); if(n){t+=n;c++;} } return c?Math.round(t/c/100)/10+'<small>k</small>':'–'; })()}</div><div class="n">avg / day</div></div>
     <div class="card stat"><div class="k">Weight</div><div class="v">${wchg===null?'–':(wchg>0?'+':'')+fmtKg(wchg)}<small>${wchg===null?'':'kg'}</small></div><div class="n">${wchg===null?'log 2 weigh-ins':'this week'}</div></div>
   </div>
   <h2>Sessions</h2><div class="card">${DAYS.map((d,i)=>{ const dn=isDone(w,d.key), miss=!dn&&sessionDate(w,i)<today(), isT=c.w===w&&c.di===i;
