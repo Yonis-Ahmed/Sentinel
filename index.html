@@ -909,7 +909,7 @@ function switchProfile(id){
   save(); PROF.active=id; saveProfiles(); LSKEY=storeKey(id);
   let ns=fresh(); try{ const raw=localStorage.getItem(LSKEY); if(raw){ ns=Object.assign(fresh(),JSON.parse(raw)); ns.weights=Object.assign({...START},ns.weights||{}); } }catch(e){}
   S=ns; draft=null; fuelDate=null; chatLog=[]; stopRest();
-  const c=cur(); view = c.di>=0 ? {type:'day',w:c.w,d:c.di} : {type:'hq',w:c.w};
+  view={type:'hq',w:cur().w};
   closeModal(); render(); say(`${S.name} online.`); syncCloud(); closeLaunch();
 }
 function syncProfileName(){ const p=PROF.list.find(x=>x.id===PROF.active); if(p && p.name!==S.name){ p.name=S.name; saveProfiles(); } }
@@ -1533,7 +1533,7 @@ function showLaunchPin(id){
 function closeLaunch(){ const L=$('#launch'); if(!L.classList.contains('on')) return; L.classList.add('fadeout'); setTimeout(()=>{ L.classList.remove('on','fadeout'); L.innerHTML=''; },450); }
 function enterProfile(id){
   if(id!==PROF.active){ switchProfile(id); }
-  else { lastMsg=briefing(); render(); say(`${greet()}, ${S.name}.`); }
+  else { view={type:'hq',w:cur().w}; lastMsg=briefing(); render(); window.scrollTo({top:0}); say(`${greet()}, ${S.name}.`); }
   closeLaunch();
 }
 function forgotPin(){
