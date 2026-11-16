@@ -52,6 +52,7 @@ input,select,textarea{font:inherit;color:inherit}
 .nav .lbl strong{display:block;font-family:var(--head);font-size:15px;color:var(--cream);font-weight:600}
 .nav .lbl span{font-size:11.5px;color:rgba(255,245,234,.5)}
 .nav.active .ic{background:var(--volt);color:#fff;border-color:var(--volt);box-shadow:0 6px 16px rgba(242,140,75,.45)}
+.nav .ic.avatar{background:linear-gradient(135deg,#f6b07e,var(--volt))!important;color:#fff;font-size:22px;font-weight:700;border-color:transparent!important;border-radius:50%}
 .nav.active .ic small{color:rgba(255,255,255,.85)}
 .nav:not(.active) .ic{background:rgba(255,245,234,.06);border-color:rgba(255,245,234,.08)}
 .nav.today:not(.active) .ic{border-color:var(--volt)}
@@ -270,13 +271,20 @@ const NUMW = 5;
 const STANDALONE = !(window.claude && window.claude.use);
 
 /* ================= STATE ================= */
-const LSKEY = 'sentinel.v1';
+const PKEY='sentinel.profiles';
+function loadProfiles(){ try{ const p=JSON.parse(localStorage.getItem(PKEY)); if(p&&p.list&&p.list.length) return p; }catch(e){} return {active:'main',list:[{id:'main',name:'Yonis'}]}; }
+let PROF=loadProfiles();
+function storeKey(id){ return id==='main'?'sentinel.v1':'sentinel.v1.'+id; }
+function saveProfiles(){ try{ localStorage.setItem(PKEY,JSON.stringify(PROF)); }catch(e){} }
+let LSKEY = storeKey(PROF.active);
+function G(){ return S.goal || {start:95,target:81,by:'2027-06-30'}; }
 function fresh(){
-  return {v:1, startDate:'2026-11-16', weights:{...START}, logs:{}, weighins:[{d:'2026-11-16',kg:95}], voice:false, updatedAt:0, food:{}, myFoods:{}, water:{}, nutri:{kcal:2200,p:160,f:70,c:220,water:3000}};
+  return {v:1, name:'Yonis', goal:{start:95,target:81,by:'2027-06-30'}, startDate:'2026-11-16', weights:{...START}, logs:{}, weighins:[{d:'2026-11-16',kg:95}], voice:false, updatedAt:0, food:{}, myFoods:{}, water:{}, nutri:{kcal:2200,p:160,f:70,c:220,water:3000}};
 }
 let S = fresh();
 try{ const raw = localStorage.getItem(LSKEY); if(raw){ S = Object.assign(fresh(), JSON.parse(raw)); S.weights = Object.assign({...START}, S.weights||{}); } }catch(e){}
 
+let cloudUid=null; function cloudPath(){ return 'data/users/'+cloudUid+'/sentinel'+(PROF.active==='main'?'':'_'+PROF.active); }
 let db=null, docRef=null, writing=false, pending=false, saveT=null;
 function save(){
   S.updatedAt = Date.now();
@@ -302,7 +310,13 @@ async function initCloud(){
     const [d,u] = await Promise.all([claude.use('db'), claude.use('user')]);
     if(!d || !u) return;
     const id = await u.id(); if(!id) return;
-    db=d; docRef = db.doc('data/users/'+id+'/sentinel');
+    db=d; cloudUid=id; await syncCloud();
+  }catch(e){ setSync('offline'); }
+}
+async function syncCloud(){
+  if(!db||!cloudUid) return;
+  try{
+    docRef = db.doc(cloudPath());
     const timer = setTimeout(()=>setSync('offline'),10000);
     const snap = await docRef.get(); clearTimeout(timer);
     if(snap.exists){
@@ -352,10 +366,10 @@ function streak(){
   }
   return n;
 }
-function latestWeight(){ const a=[...S.weighins].sort((x,y)=>x.d<y.d?-1:1); return a.length?a[a.length-1].kg:GOAL.start; }
+function latestWeight(){ const a=[...S.weighins].sort((x,y)=>x.d<y.d?-1:1); return a.length?a[a.length-1].kg:G().start; }
 function expectedWeight(date){
-  const s=parseD(S.startDate), e=parseD(GOAL.by); const p=Math.min(1,Math.max(0,daysBetween(s,date)/daysBetween(s,e)));
-  return GOAL.start-(GOAL.start-GOAL.target)*p;
+  const s=parseD(S.startDate), e=parseD(G().by); const p=Math.min(1,Math.max(0,daysBetween(s,date)/daysBetween(s,e)));
+  return G().start-(G().start-G().target)*p;
 }
 function greet(){ const h=new Date().getHours(); return h<12?'Good morning':h<17?'Good afternoon':'Good evening'; }
 
@@ -434,15 +448,15 @@ function fillVoices(sel){
   sel.innerHTML = vs.length ? vs.map(v=>`<option value="${esc(v.name)}" ${cur&&v.name===cur.name?'selected':''}>${esc(v.name)} · ${esc(v.lang)}</option>`).join('') : '<option>Default voice</option>';
 }
 function briefing(){
-  const c=cur(); const kgLeft=(latestWeight()-GOAL.target).toFixed(1);
-  if(c.before) return `${greet()}, Yonis. Operation begins ${parseD(S.startDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}. All systems ready on your mark.`;
-  if(c.after) return `${greet()}, Yonis. Phase one complete. ${doneCount()} of 20 missions logged. Awaiting orders for phase two.`;
-  if(c.di<0) return `${greet()}, Yonis. Stand down today. Recovery is part of the mission. Week ${c.w} status: ${DAYS.filter(d=>isDone(c.w,d.key)).length} of 4 complete. ${kgLeft}kg to target. Fuel up, sleep well.`;
+  const c=cur(); const kgLeft=(latestWeight()-G().target).toFixed(1);
+  if(c.before) return `Standing by. Starts ${parseD(S.startDate).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}.`;
+  if(c.after) return `Phase one done. ${doneCount()}/20.`;
+  if(c.di<0) return `Rest day. ${DAYS.filter(d=>isDone(c.w,d.key)).length}/4 this week.`;
   const d=DAYS[c.di];
-  if(isDone(c.w,d.key)) return `Mission complete, Yonis. Day ${c.di+1} of week ${c.w} is secured. Streak holding at ${streak()}.`;
+  if(isDone(c.w,d.key)) return `Day secured. Streak ${streak()}.`;
   const lead=d.ex[0]; const W=WEEKS[c.w];
   const reps=lead[2]===lead[3]?lead[2]:lead[2]+'–'+lead[3];
-  return `${greet()}, Yonis. Mission brief: week ${c.w}, operation ${d.name}. Primary objective, ${EX[lead[0]].n}, ${setsFor(c.w,0,lead[1])}×${reps} at ${fmtKg(workW(c.w,lead[0]))}kg. Intensity ${W.rpe}. ${kgLeft}kg to target. Sixty minutes on the clock. You're cleared to begin.`;
+  return `${d.name}. ${EX[lead[0]].n}, ${fmtKg(workW(c.w,lead[0]))}kg. Cleared.`;
 }
 
 /* ================= VIEW STATE ================= */
@@ -462,6 +476,7 @@ const ICON = {
 function renderSide(){
   const c=cur(); const w=view.w;
   let h=`<div class="logo"><div class="mark">${ICON.logo}</div><div class="brand">SENTINEL</div></div>`;
+  h+=`<button class="nav" data-act="profiles" aria-label="Switch profile"><div class="ic avatar">${esc((S.name||'?').trim().charAt(0).toUpperCase())}</div><div class="lbl"><strong>${esc(S.name)}</strong><span>Switch profile${PROF.list.length>1?' · '+PROF.list.length:''}</span></div></button>`;
   h+=`<button class="nav ${view.type==='hq'?'active':''}" data-act="hq"><div class="ic">${ICON.hq}</div><div class="lbl"><strong>HQ</strong><span>Briefing · stats · talk</span></div></button>`;
   h+=`<button class="nav ${view.type==='fuel'?'active':''}" data-act="fuel"><div class="ic">${ICON.fuel}</div><div class="lbl"><strong>Fuel</strong><span>Food · water · accountability</span></div></button>`;
   h+=`<div class="sep"></div><div class="weekbox"><button class="weekbtn" data-act="cycleWeek" aria-label="Choose week">W${w}<span class="arr">${sideOpen?'▴':'▾'}</span></button>
@@ -492,12 +507,12 @@ function hud(){
 /* ================= RENDER: HQ ================= */
 function renderHQ(){
   const c=cur(); const lw=latestWeight(); const exp=expectedWeight(today());
-  const lost=GOAL.start-lw, total=GOAL.start-GOAL.target; const pct=Math.max(0,Math.min(100,lost/total*100));
+  const lost=G().start-lw, total=G().start-G().target; const pct=Math.max(0,Math.min(100,lost/total*100));
   const diff=lw-exp; const status = diff<=-0.3?'Ahead of schedule':diff<=0.5?'On track':'Behind — tighten up';
   const dc=doneCount();
   const nextIdx = c.di>=0 && !isDone(c.w,DAYS[c.di].key) ? c.di : DAYS.findIndex((d,i)=>!isDone(c.w,d.key) && sessionDate(c.w,i)>=today());
   let h=hud();
-  h+=`<div class="kicker">Headquarters</div><h1>${greet()},<br>Yonis.</h1>
+  h+=`<div class="kicker">Headquarters</div><h1>${greet()},<br>${esc(S.name)}.</h1>
   <div class="sub">Full-body strength · 4 × 60 min lunchtime sessions · Mon–Thu</div>`;
   if(nextIdx>=0 && !c.after){
     const d=DAYS[nextIdx];
@@ -513,7 +528,7 @@ function renderHQ(){
     <div class="card stat"><div class="k">Week</div><div class="v">${c.w}</div><div class="n">${WEEKS[c.w].tag}</div></div></div>`;
   h+=`<h2>Body weight</h2><div class="card">
     <div class="grid2"><div class="stat"><div class="k">Current</div><div class="v">${fmtKg(lw)}<small>kg</small></div><div class="n">${lost>=0?'−':'+'}${fmtKg(Math.abs(lost))}kg since start</div></div>
-    <div class="stat"><div class="k">Target · ${new Date(GOAL.by).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</div><div class="v">${GOAL.target}<small>kg</small></div><div class="n" style="color:${diff<=0.5?'var(--volt)':'var(--amber)'}">${status}</div></div></div>
+    <div class="stat"><div class="k">Target · ${new Date(G().by).toLocaleDateString('en-GB',{month:'short',year:'numeric'})}</div><div class="v">${G().target}<small>kg</small></div><div class="n" style="color:${diff<=0.5?'var(--volt)':'var(--amber)'}">${status}</div></div></div>
     <div class="bar"><i style="width:${pct}%"></i></div><div class="muted" style="margin-top:6px">${fmtKg(pct)}% of the way · plan pace ≈ 0.45kg/week · today's checkpoint ${fmtKg(exp)}kg</div>
     ${chart()}
     <div class="weighrow"><input class="inp" id="wkg" type="number" inputmode="decimal" step="0.1" placeholder="Today's weigh-in (kg)"><button class="btn p" data-act="weigh">Log</button></div></div>`;
@@ -525,6 +540,13 @@ function renderHQ(){
     <div class="chips" id="chips">${['Brief me on today','What should I eat before training?','Bench felt easy, bump it','How am I tracking?'].map(q=>`<button class="chip" data-act="ask" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>
     <div class="weighrow"><input class="inp" id="ask" placeholder="Ask anything… (tap 🎤 on the keyboard to speak)" autocomplete="off"><button class="btn p" data-act="send">Send</button></div>
     <div class="muted" id="aistate" style="margin-top:6px"></div></div>`;
+  h+=`<h2>Profile</h2><div class="card">
+    <div class="lift"><div class="ln">Name</div><input class="inp" id="pf-name" style="width:170px;height:42px" value="${esc(S.name)}"></div>
+    <div class="lift"><div class="ln">Start weight<span>kg</span></div><input class="inp" id="pf-start" type="number" inputmode="decimal" style="width:110px;height:42px;text-align:right" value="${G().start}"></div>
+    <div class="lift"><div class="ln">Goal weight<span>kg</span></div><input class="inp" id="pf-target" type="number" inputmode="decimal" style="width:110px;height:42px;text-align:right" value="${G().target}"></div>
+    <div class="lift"><div class="ln">Goal date</div><input class="inp" id="pf-by" type="date" style="width:170px;height:42px;font-size:15px" value="${G().by}"></div>
+    <div class="lift"><div class="ln">Switch or add profile<span>${PROF.list.map(p=>esc(p.name)).join(' · ')}</span></div><button class="btn sm p" data-act="profiles">Profiles</button></div>
+    ${PROF.active!=='main'?'<div class="lift"><div class="ln">Delete this profile</div><button class="btn sm" style="color:var(--red)" data-act="pdel">Delete</button></div>':''}</div>`;
   h+=`<h2>Settings</h2><div class="card">
     <div class="lift"><div class="ln">Programme start (Monday)<span>Week 1 Day 1 lands on this date</span></div><input class="inp" style="width:170px;height:42px;font-size:15px" type="date" id="sdate" value="${S.startDate}"></div>
     <div class="lift"><div class="ln">Voice briefings<span>SENTINEL speaks its messages</span></div><button class="btn sm ${S.voice?'p':''}" data-act="voice">${S.voice?'On':'Off'}</button></div>
@@ -540,18 +562,18 @@ function renderHQ(){
   return h;
 }
 function chart(){
-  const pts=[...S.weighins].sort((a,b)=>a.d<b.d?-1:1); const s=parseD(S.startDate), e=parseD(GOAL.by);
+  const pts=[...S.weighins].sort((a,b)=>a.d<b.d?-1:1); const s=parseD(S.startDate), e=parseD(G().by);
   const span=Math.max(1,daysBetween(s,e)); const W=600,H=120,pad=8;
-  const lo=GOAL.target-1, hi=Math.max(GOAL.start+1,...pts.map(p=>p.kg));
+  const lo=G().target-1, hi=Math.max(G().start+1,...pts.map(p=>p.kg));
   const X=d=>pad+(W-2*pad)*Math.max(0,Math.min(1,daysBetween(s,parseD(d))/span));
   const Y=k=>pad+(H-2*pad)*(1-(k-lo)/(hi-lo));
   const line=pts.map((p,i)=>(i?'L':'M')+X(p.d).toFixed(1)+' '+Y(p.kg).toFixed(1)).join(' ');
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-   <line x1="${X(S.startDate)}" y1="${Y(GOAL.start)}" x2="${X(GOAL.by)}" y2="${Y(GOAL.target)}" stroke="#a48bc0" stroke-width="1.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
-   <line x1="${pad}" y1="${Y(GOAL.target)}" x2="${W-pad}" y2="${Y(GOAL.target)}" stroke="rgba(62,42,71,.12)" vector-effect="non-scaling-stroke"/>
+   <line x1="${X(S.startDate)}" y1="${Y(G().start)}" x2="${X(G().by)}" y2="${Y(G().target)}" stroke="#a48bc0" stroke-width="1.5" stroke-dasharray="5 5" vector-effect="non-scaling-stroke"/>
+   <line x1="${pad}" y1="${Y(G().target)}" x2="${W-pad}" y2="${Y(G().target)}" stroke="rgba(62,42,71,.12)" vector-effect="non-scaling-stroke"/>
    ${pts.length>1?`<path d="${line}" fill="none" stroke="#f28c4b" stroke-width="2.5" vector-effect="non-scaling-stroke"/>`:''}
    ${pts.map(p=>`<circle cx="${X(p.d)}" cy="${Y(p.kg)}" r="3.5" fill="#f28c4b"/>`).join('')}
-  </svg><div class="muted"><span style="color:var(--cyan)">- - -</span> plan to ${GOAL.target}kg &nbsp; <span style="color:var(--volt)">●</span> your weigh-ins</div>`;
+  </svg><div class="muted"><span style="color:var(--cyan)">- - -</span> plan to ${G().target}kg &nbsp; <span style="color:var(--volt)">●</span> your weigh-ins</div>`;
 }
 
 /* ================= RENDER: DAY ================= */
@@ -627,7 +649,7 @@ function render(){
 function go(v){ view=v; if(window.innerWidth<1000) sideOpen=false; render(); window.scrollTo({top:0,behavior:'instant'}); }
 function setRecord(w,dk,key,s){ const log=getLog(w,dk,true); log.sets[key]=log.sets[key]||[]; log.sets[key][s]=log.sets[key][s]||{}; return log.sets[key][s]; }
 
-const COMPLIMENTS=['Set confirmed.','Clean execution.','Target hit. Reset.','Logged. Stay locked in.','Smooth. Hold that standard.','Copy that. Next set on my mark.'];
+const COMPLIMENTS=['Confirmed.','Clean.','Logged.','Good set.','Copy.','Locked in.'];
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-act]'); if(!b) return;
   const a=b.dataset.act;
@@ -637,23 +659,23 @@ document.addEventListener('click',ev=>{
     case 'toggleSide': sideOpen=!sideOpen; renderSide(); break;
     case 'closeSide': sideOpen=false; renderSide(); break;
     case 'hq': go({type:'hq',w:view.w}); say(briefing()); break;
-    case 'day': go({type:'day',w:b.dataset.w?+b.dataset.w:view.w,d:+b.dataset.d}); { const d=DAYS[view.d]; say(isDone(view.w,d.key)?`Operation ${d.name} is already secured. Review or reopen.`:`${d.full} operation: ${d.name}. ${d.ex.length} objectives. Begin with the mobility protocol.`); } break;
+    case 'day': go({type:'day',w:b.dataset.w?+b.dataset.w:view.w,d:+b.dataset.d}); { const d=DAYS[view.d]; say(isDone(view.w,d.key)?`${d.name}. Secured.`:`${d.name}. ${d.ex.length} lifts.`); } break;
     case 'cycleWeek': sideOpen=!sideOpen; renderSide(); break;
-    case 'week': view.w=+b.dataset.w; render(); say(`Week ${view.w}: ${WEEKS[view.w].tag}. ${WEEKS[view.w].note} Choose a day.`); break;
+    case 'week': view.w=+b.dataset.w; render(); say(`Week ${view.w}. ${WEEKS[view.w].tag}.`); break;
     case 'voice': S.voice=!S.voice; save(); render(); if(S.voice) say(briefing(),true); else { try{tts&&tts.stop();speechSynthesis.cancel();}catch(e){} } break;
     case 'fold': if(b.dataset.k==='warm') openWarm=!openWarm; else openCool=!openCool; render(); break;
     case 'chk': { const log=getLog(view.w,DAYS[view.d].key,true); const arr=log[b.dataset.k]; arr[+b.dataset.j]=!arr[+b.dataset.j]; save(); render();
-      const items=b.dataset.k==='warm'?WARM:COOL; if(arr.filter(Boolean).length===items.length) say(b.dataset.k==='warm'?'Mobility protocol complete. Systems primed. Proceed to the first lift and ramp up clean.':'Cool-down complete. Mission closed out properly. That is how we win the long game.'); } break;
-    case 'start': { const log=getLog(view.w,DAYS[view.d].key,true); log.startedAt=Date.now(); save(); render(); say('Clock is live. Sixty minutes. Phone down between sets. Let\'s execute.'); } break;
-    case 'reopen': { const log=getLog(view.w,DAYS[view.d].key,true); log.done=false; save(); render(); say('Session reopened. Weight increases already applied stay in place.'); } break;
+      const items=b.dataset.k==='warm'?WARM:COOL; if(arr.filter(Boolean).length===items.length) say(b.dataset.k==='warm'?'Mobility done. Lift.':'Cool-down done.'); } break;
+    case 'start': { const log=getLog(view.w,DAYS[view.d].key,true); log.startedAt=Date.now(); save(); render(); say('Clock live. Sixty minutes.'); } break;
+    case 'reopen': { const log=getLog(view.w,DAYS[view.d].key,true); log.done=false; save(); render(); say('Reopened.'); } break;
     case 'rep': { const d=DAYS[view.d]; const e=d.ex[+b.dataset.k]; const r=setRecord(view.w,d.key,b.dataset.ex+'@'+b.dataset.k,+b.dataset.s);
       const cur=r.r!=null?r.r:e[3]; r.r=Math.max(0,Math.min(30,cur+(+b.dataset.v))); save(); render(); } break;
     case 'set': { const d=DAYS[view.d]; const k=+b.dataset.k; const e=d.ex[k]; const id=b.dataset.ex; const r=setRecord(view.w,d.key,id+'@'+k,+b.dataset.s);
       if(r.done){ r.done=false; } else { r.done=true; if(r.r==null) r.r=e[3]; r.w=workW(view.w,id); startRest(+b.dataset.rest);
         const log=getLog(view.w,d.key,true); if(!log.startedAt) log.startedAt=Date.now();
-        if(r.r<e[2] && EX[id].t!=='time' && EX[id].t!=='carry') say(`${r.r} reps. Below target range. We hold this weight until you own it.`);
-        else if(r.r>=e[3]+3 && EX[id].t!=='bw') say(`${r.r} reps. That load is too light for you. Tap the weight and raise it. Every day with ${EX[id].n} will update.`);
-        else say(COMPLIMENTS[Math.floor(Math.random()*COMPLIMENTS.length)]+' Rest '+e[4]+' seconds.');
+        if(r.r<e[2] && EX[id].t!=='time' && EX[id].t!=='carry') say(`${r.r} reps. Hold weight.`);
+        else if(r.r>=e[3]+3 && EX[id].t!=='bw') say('Too light. Raise it.');
+        else say(COMPLIMENTS[Math.floor(Math.random()*COMPLIMENTS.length)]);
       } save(); render(); } break;
     case 'complete': complete(); break;
     case 'editW': openEdit(b.dataset.id); break;
@@ -663,22 +685,22 @@ document.addEventListener('click',ev=>{
     case 'mcancel': closeModal(); break;
     case 'restAdd': rest.end+=15000; rest.total+=15; break;
     case 'restSkip': stopRest(); break;
-    case 'weigh': { const v=parseFloat($('#wkg').value); if(!(v>40&&v<250)) { say('I need a realistic number in kilograms.'); break; } logWeigh(v); } break;
+    case 'weigh': { const v=parseFloat($('#wkg').value); if(!(v>40&&v<250)) { say('Check that number.'); break; } logWeigh(v); } break;
     case 'send': { const q=$('#ask').value.trim(); if(q){ $('#ask').value=''; ask(q); } } break;
     case 'ask': ask(b.dataset.q); break;
-    case 'backup': { const t=JSON.stringify(S); navigator.clipboard && navigator.clipboard.writeText(t).then(()=>say('Backup copied to clipboard. Paste it into Notes for safekeeping.')).catch(()=>say('Clipboard was refused on this device.')); } break;
+    case 'backup': { const t=JSON.stringify(S); navigator.clipboard && navigator.clipboard.writeText(t).then(()=>say('Backup copied.')).catch(()=>say('Copy blocked.')); } break;
     case 'reset': openConfirmReset(); break;
-    case 'gsave': { const v=($('#gkeyin').value||'').trim(); if(v.length<20){ say('That key looks incomplete.'); break; } try{ localStorage.setItem(GKEY,v); }catch(e){} render(); ensureAudio(); geminiSpeak('SENTINEL voice online. Mission parameters loaded. Ready when you are, Yonis.').then(()=>{ const g=$('#gstat'); if(g) g.textContent='✓ AI voice working.'; }).catch(e=>{ const g=$('#gstat'); if(g) g.textContent=gErrText(e); }); } break;
-    case 'gclear': try{ localStorage.removeItem(GKEY); }catch(e){} gCache.clear(); render(); say('AI voice key removed from this device.'); break;
-    case 'gtest': { const g=$('#gstat'); if(g) g.textContent='Generating…'; geminiSpeak('Mission brief received. Primary objective locked. You are cleared to begin, Yonis.').then(()=>{ const g2=$('#gstat'); if(g2) g2.textContent='✓ Playing '+(S.gvoice||'Kore')+'.'; }).catch(e=>{ const g2=$('#gstat'); if(g2) g2.textContent=gErrText(e); }); } break;
-    case 'testVoice': speakOut('SENTINEL online. Mission parameters loaded. Ready when you are, Yonis.'); break;
-    case 'doReset': S=fresh(); save(); closeModal(); render(); say('All systems reset. Standing by for a fresh start.'); break;
+    case 'gsave': { const v=($('#gkeyin').value||'').trim(); if(v.length<20){ say('Key incomplete.'); break; } try{ localStorage.setItem(GKEY,v); }catch(e){} render(); ensureAudio(); geminiSpeak('SENTINEL online.').then(()=>{ const g=$('#gstat'); if(g) g.textContent='✓ AI voice working.'; }).catch(e=>{ const g=$('#gstat'); if(g) g.textContent=gErrText(e); }); } break;
+    case 'gclear': try{ localStorage.removeItem(GKEY); }catch(e){} gCache.clear(); render(); say('Key removed.'); break;
+    case 'gtest': { const g=$('#gstat'); if(g) g.textContent='Generating…'; geminiSpeak('Voice check. Cleared.').then(()=>{ const g2=$('#gstat'); if(g2) g2.textContent='✓ Playing '+(S.gvoice||'Kore')+'.'; }).catch(e=>{ const g2=$('#gstat'); if(g2) g2.textContent=gErrText(e); }); } break;
+    case 'testVoice': speakOut('SENTINEL online.'); break;
+    case 'doReset': { const keep={name:S.name,goal:S.goal,nutri:S.nutri}; S=Object.assign(fresh(),keep); } save(); closeModal(); render(); say('Reset complete.'); break;
   }
 });
 document.addEventListener('change',ev=>{
   if(ev.target.id==='gvsel'){ S.gvoice=ev.target.value; save(); }
-  if(ev.target.id==='vsel'){ S.voiceName=ev.target.value; save(); speakOut('Voice confirmed. Standing by.'); }
-  if(ev.target.id==='sdate' && ev.target.value){ const d=parseD(ev.target.value); const off=(d.getDay()+6)%7; d.setDate(d.getDate()-off); S.startDate=ymd(d); save(); render(); say('Programme start set to Monday '+d.toLocaleDateString('en-GB',{day:'numeric',month:'long'})+'.'); }
+  if(ev.target.id==='vsel'){ S.voiceName=ev.target.value; save(); speakOut('Voice set.'); }
+  if(ev.target.id==='sdate' && ev.target.value){ const d=parseD(ev.target.value); const off=(d.getDay()+6)%7; d.setDate(d.getDate()-off); S.startDate=ymd(d); save(); render(); say('Start date set.'); }
 });
 document.addEventListener('keydown',ev=>{
   if(ev.key==='Enter' && ev.target.id==='ask'){ const q=ev.target.value.trim(); if(q){ ev.target.value=''; ask(q);} }
@@ -689,7 +711,7 @@ document.addEventListener('keydown',ev=>{
 function logWeigh(v){
   const t=ymd(today()); S.weighins=S.weighins.filter(x=>x.d!==t); S.weighins.push({d:t,kg:Math.round(v*10)/10}); save(); render();
   const exp=expectedWeight(today()); const diff=v-exp;
-  say(`${fmtKg(v)}kg logged. ${fmtKg(Math.max(0,v-GOAL.target))}kg to go. ${diff<=0.5?'You are on schedule.':'Slightly behind the line — nutrition is the lever, not more cardio.'}`);
+  say(`${fmtKg(v)}kg. ${diff<=0.5?'On track.':'Behind. Tighten food.'}`);
 }
 
 function complete(){
@@ -716,7 +738,7 @@ function complete(){
   else if(ups.length) sum+='Progressive overload applied: '+ups.join(', ')+'. Every day using these lifts is updated.';
   else sum+='No increases this time — repeat the weights and chase the top of the range.';
   if(holds.length) sum+=' Holding: '+holds.join(', ')+'.';
-  log.summary=sum; save(); stopRest(); render(); say(sum + ' Streak: '+streak()+'.', false);
+  log.summary=sum; save(); stopRest(); render(); say(`Mission complete.${ups.length?' '+ups.length+' lift'+(ups.length>1?'s':'')+' up.':''}`);
   window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
 }
 
@@ -739,7 +761,7 @@ function saveEdit(){
   // also update any not-yet-ticked sets: they read live, ticked sets keep their logged weight
   save(); closeModal(); render();
   const uses=DAYS.filter(d=>d.ex.some(e=>e[0]===id)).map(d=>d.full).join(' and ');
-  say(`Copy. ${EX[id].n} ${v>old?'raised':'set'} to ${fmtKg(S.weights[id])}${EX[id].t==='time'?'s':'kg'} on ${uses}. Progression continues from here.`);
+  say(`${EX[id].n}, ${fmtKg(S.weights[id])}${EX[id].t==='time'?'s':'kg'}. All days.`);
 }
 function closeModal(){ $('#modal').classList.remove('on'); }
 function openConfirmReset(){
@@ -758,7 +780,7 @@ function tickRest(){
   $('#restt').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
   $('#ringc').setAttribute('stroke-dashoffset', (138.2*(1-left/(rest.total*1000))).toFixed(1));
   if(S.voice && s===10 && !rest.warned){ rest.warned=true; speakOut('Ten seconds.'); }
-  if(left<=0){ stopRest(); beep(); say('Rest complete. Back on the bar.'); }
+  if(left<=0){ stopRest(); beep(); say('Go.'); }
 }
 function tickClock(){
   const el=$('#clock'); if(!el || view.type!=='day') return;
@@ -783,21 +805,21 @@ function context(){
     todaysSession: d? {day:d.full,name:d.name,done:isDone(c.w,d.key),exercises:d.ex.map(([id,s,lo,hi],k)=>({id,name:EX[id].n,sets:setsFor(c.w,k,s),reps:lo===hi?lo:lo+'-'+hi,weight:workW(c.w,id)}))} : 'rest day',
     workingWeightsKg:S.weights, exerciseIds:Object.fromEntries(Object.entries(EX).map(([k,v])=>[k,v.n])),
     sessionsDone:doneCount()+'/20', streak:streak(),
-    bodyweight:{latest:latestWeight(), start:GOAL.start, target:GOAL.target, targetBy:GOAL.by, recent:S.weighins.slice(-6)},
+    bodyweight:{latest:latestWeight(), start:G().start, target:G().target, targetBy:G().by, recent:S.weighins.slice(-6)},
   };
 }
-const SYS = `You are SENTINEL, Yonis's personal strength-training AI — think a calm, razor-sharp AI butler in a high-tech suit: British English, dry wit, disciplined, loyal, never cheesy. Address him as Yonis occasionally. Replies: short and punchy (under 90 words) unless he asks for detail. No markdown headers or bullet spam; plain sentences.
-About Yonis: 95kg at start, targeting 81kg by June/July 2027. Experienced with weights but consistency has been his weak point. Trains full body Mon–Thu at lunch, 60 minutes including 5–10 min mobility. Has done a half marathon and Hyrox; cardio will be added later — strength first. NHS pathway coordinator, new dad, also drives Uber, so time and sleep are tight.
+function SYSF(){ const g=G(); return `You are SENTINEL, ${S.name}'s personal strength-training AI — think a calm, razor-sharp AI butler in a high-tech suit: British English, dry wit, disciplined, loyal, never cheesy. Address them as ${S.name} occasionally. Replies: short and punchy (under 90 words) unless he asks for detail. No markdown headers or bullet spam; plain sentences.
+About ${S.name}: ${g.start}kg at start, targeting ${g.target}kg by ${g.by}. Consistency is the main goal. Trains full body Mon–Thu at lunch, 60 minutes including 5–10 min mobility. Has done a half marathon and Hyrox; cardio will be added later — strength first. NHS pathway coordinator, new dad, also drives Uber, so time and sleep are tight.
 Programme rules: double progression — hit the top of the rep range on every set and the weight goes up (bigger lifts +2.5–5kg). Weeks: 1 Calibrate, 2 Build, 3 Push, 4 Peak, 5 Deload.
 You can change his working weights with set_working_weight (it applies to every day that lift appears) and log a weigh-in with log_bodyweight. Only use them when he clearly asks. Confirm what you changed.
-Never give medical diagnoses; for pain beyond normal soreness tell him to stop that movement and get it checked.`;
+Never give medical diagnoses; for pain beyond normal soreness tell them to stop that movement and get it checked.`; }
 async function ask(q){
   if(busy) return;
   if(!sample){ chatLog.push({role:'user',content:q},{role:'assistant',content:'Conversation module is offline in this view. Open the app from claude.ai while signed in to talk to me.'}); drawChat(); return; }
   busy=true; chatLog.push({role:'user',content:q}); chatLog.push({role:'assistant',content:'…'}); drawChat();
   const st=$('#aistate'); if(st) st.textContent='SENTINEL is thinking…';
   const hist=chatLog.slice(0,-1).slice(-12);
-  const input=hist.map((m,i)=> i===hist.length-1 ? {role:'user',content:SYS+'\n\nLIVE DATA:\n'+JSON.stringify(context())+'\n\nYonis says: '+m.content} : m);
+  const input=hist.map((m,i)=> i===hist.length-1 ? {role:'user',content:SYSF()+'\n\nLIVE DATA:\n'+JSON.stringify(context())+'\n\n'+S.name+' says: '+m.content} : m);
   if(input[0].role!=='user') input.shift();
   const tools=[
     {name:'set_working_weight',description:'Set the working weight (kg; seconds for plank) for one exercise. Applies to every day it appears.',inputSchema:{type:'object',properties:{exercise_id:{type:'string',enum:Object.keys(EX)},value:{type:'number'}},required:['exercise_id','value']},
@@ -808,8 +830,8 @@ async function ask(q){
   try{
     const res=await sample(input,{cache:false,tools,onText:({text})=>{ chatLog[chatLog.length-1].content=text||'…'; const c=$('#chat'); if(c&&c.lastChild){ c.lastChild.textContent=chatLog[chatLog.length-1].content; c.scrollTop=c.scrollHeight; } }});
     chatLog[chatLog.length-1].content=res.text||'Done.';
-    say(res.text.length>220?res.text.slice(0,217)+'…':res.text, false);
-    if(S.voice) speakOut(res.text);
+    say(res.text.split(/(?<=[.!?])\s/)[0].slice(0,120), false);
+    if(S.voice) speakOut(res.text.split(/(?<=[.!?])\s/)[0]);
   }catch(e){
     chatLog[chatLog.length-1].content = e&&e.code==='rate_limited' ? 'Too many requests — give me a minute.' : e&&e.code==='not_granted' ? 'You declined the AI permission. Logging still works.' : 'Link interrupted. Try again.';
     if(e&&e.code==='not_granted') sample=null;
@@ -817,6 +839,83 @@ async function ask(q){
   busy=false; if($('#aistate')) $('#aistate').textContent='';
   render();
 }
+
+/* ---------- profiles ---------- */
+function mondayOf(d){ const x=new Date(d); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; }
+function openProfiles(){
+  const rows=PROF.list.map(p=>`<button class="lift" style="width:100%;text-align:left" data-act="pswitch" data-id="${p.id}"><div class="ic avatar" style="width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,#f6b07e,var(--volt));color:#fff;font-weight:700;font-size:18px;flex:none">${esc(p.name.charAt(0).toUpperCase())}</div><div class="ln" style="margin-left:4px">${esc(p.name)}<span>${p.id===PROF.active?'Active':'Tap to switch'}</span></div>${p.id===PROF.active?'<span style="color:var(--volt);font-weight:700">✓</span>':''}</button>`).join('');
+  $('#sheet').innerHTML=`<div class="kicker">Profiles</div><div style="font-family:var(--head);font-weight:700;font-size:24px;margin-top:4px">Who's training?</div>
+   <div class="sub">Each profile has its own plan, weights, food log, goals and voice. Nothing is shared.</div>
+   <div style="margin-top:12px">${rows}</div>
+   <div class="grid2" style="margin-top:16px"><button class="btn" data-act="mcancel">Close</button><button class="btn p" data-act="pnew">+ Add profile</button></div>`;
+  $('#modal').classList.add('on');
+}
+function openNewProfile(){
+  const by=new Date(); by.setMonth(by.getMonth()+7);
+  const f=(id,l,v,t='text',ex='')=>`<label style="display:block;margin-top:10px"><div class="muted" style="margin-bottom:4px">${l}</div><input class="inp" id="${id}" type="${t}" value="${v}" ${ex}></label>`;
+  $('#sheet').innerHTML=`<div class="kicker">New profile</div><div style="font-family:var(--head);font-weight:700;font-size:24px;margin-top:4px">Set up a training partner</div>
+   ${f('np-name','Name','','text','placeholder="e.g. her first name" autocomplete="off"')}
+   <div class="grid2">${f('np-cur','Current weight (kg)','','number','inputmode="decimal" placeholder="e.g. 70"')}${f('np-tgt','Goal weight (kg)','','number','inputmode="decimal" placeholder="e.g. 63"')}</div>
+   ${f('np-by','Goal date',ymd(by),'date')}
+   <label style="display:block;margin-top:10px"><div class="muted" style="margin-bottom:4px">Lifting experience — sets starting weights</div>
+   <select class="inp" id="np-lvl"><option value="new">New to weights</option><option value="some" selected>Some experience</option><option value="exp">Experienced</option></select></label>
+   <div class="muted" style="margin-top:8px">Same Mon–Thu full-body plan. Week 1 calibrates — every weight can be changed with one tap.</div>
+   <div class="muted" id="np-err" style="color:var(--red);margin-top:6px"></div>
+   <div class="grid2" style="margin-top:14px"><button class="btn" data-act="profiles">Back</button><button class="btn p" data-act="pcreate">Create</button></div>`;
+  $('#modal').classList.add('on');
+}
+function createProfile(){
+  const name=($('#np-name').value||'').trim(), cur=parseFloat($('#np-cur').value), tgt=parseFloat($('#np-tgt').value), by=$('#np-by').value, lvl=$('#np-lvl').value;
+  const err=m=>{ $('#np-err').textContent=m; };
+  if(!name) return err('Add a name.'); if(!(cur>30&&cur<250)) return err('Check the current weight.'); if(!(tgt>30&&tgt<250)) return err('Check the goal weight.'); if(!by) return err('Pick a goal date.');
+  const sc={new:0.45,some:0.6,exp:0.8}[lvl]||0.6; const w={};
+  Object.keys(START).forEach(k=>{ const t=EX[k].t, v=START[k];
+    if(t==='time') w[k]=lvl==='new'?30:40; else if(t==='bw') w[k]=0;
+    else if(t==='db'||t==='carry') w[k]=Math.max(2,roundTo(v*sc,2));
+    else if(t==='bb') w[k]=Math.max(k==='hipthrust'||k==='rdl'||k==='deadlift'?30:20,roundTo(v*sc,2.5));
+    else w[k]=Math.max(5,roundTo(v*sc,2.5)); });
+  const kcal=Math.min(3200,Math.max(1400,Math.round(cur*24/50)*50)), pr=Math.min(200,Math.max(90,Math.round(tgt*1.9/5)*5)), fat=Math.round(kcal*0.28/9/5)*5, carb=Math.max(80,Math.round((kcal-pr*4-fat*9)/4/5)*5);
+  const id='p'+Date.now().toString(36);
+  save();
+  const ns=fresh(); Object.assign(ns,{name, goal:{start:cur,target:tgt,by}, startDate:ymd(mondayOf(today())), weights:w, weighins:[{d:ymd(today()),kg:cur}], nutri:{kcal,p:pr,f:fat,c:carb,water:Math.round(cur*35/250)*250}, voice:S.voice, gvoice:S.gvoice||'Kore', voiceName:S.voiceName, updatedAt:Date.now()});
+  try{ localStorage.setItem(storeKey(id),JSON.stringify(ns)); }catch(e){}
+  PROF.list.push({id,name}); saveProfiles(); switchProfile(id);
+}
+function switchProfile(id){
+  if(id===PROF.active){ closeModal(); return; }
+  save(); PROF.active=id; saveProfiles(); LSKEY=storeKey(id);
+  let ns=fresh(); try{ const raw=localStorage.getItem(LSKEY); if(raw){ ns=Object.assign(fresh(),JSON.parse(raw)); ns.weights=Object.assign({...START},ns.weights||{}); } }catch(e){}
+  S=ns; draft=null; fuelDate=null; chatLog=[]; stopRest();
+  const c=cur(); view = c.di>=0 ? {type:'day',w:c.w,d:c.di} : {type:'hq',w:c.w};
+  closeModal(); sideOpen=false; render(); say(`${S.name} online.`); syncCloud();
+}
+function syncProfileName(){ const p=PROF.list.find(x=>x.id===PROF.active); if(p && p.name!==S.name){ p.name=S.name; saveProfiles(); } }
+function deleteProfile(){
+  if(PROF.active==='main') return; const id=PROF.active;
+  try{ localStorage.removeItem(storeKey(id)); }catch(e){}
+  PROF.list=PROF.list.filter(p=>p.id!==id); PROF.active='main'; saveProfiles(); LSKEY=storeKey('main');
+  try{ const raw=localStorage.getItem(LSKEY); S=raw?Object.assign(fresh(),JSON.parse(raw)):fresh(); S.weights=Object.assign({...START},S.weights||{}); }catch(e){ S=fresh(); }
+  closeModal(); view={type:'hq',w:cur().w}; render(); say('Profile deleted.'); syncCloud();
+}
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-act]'); if(!b) return;
+  switch(b.dataset.act){
+    case 'profiles': openProfiles(); break;
+    case 'pnew': openNewProfile(); break;
+    case 'pcreate': createProfile(); break;
+    case 'pswitch': switchProfile(b.dataset.id); break;
+    case 'pdel': $('#sheet').innerHTML=`<div class="kicker" style="color:var(--red)">Delete profile</div><div style="font-family:var(--head);font-weight:700;font-size:24px;margin-top:4px">Delete ${esc(S.name)}?</div><div class="sub">All of ${esc(S.name)}'s workouts, food and weigh-ins on this device go. Can't be undone.</div><div class="grid2" style="margin-top:16px"><button class="btn" data-act="mcancel">Keep</button><button class="btn" style="background:var(--red);color:#fff" data-act="pdelyes">Delete</button></div>`; $('#modal').classList.add('on'); break;
+    case 'pdelyes': deleteProfile(); break;
+  }
+});
+document.addEventListener('change',ev=>{
+  const id=ev.target.id; if(!id||!id.startsWith('pf-')) return; const v=ev.target.value;
+  if(id==='pf-name' && v.trim()){ S.name=v.trim().slice(0,30); syncProfileName(); }
+  if(id==='pf-start' && +v>30){ S.goal={...G(),start:+v}; }
+  if(id==='pf-target' && +v>30){ S.goal={...G(),target:+v}; }
+  if(id==='pf-by' && v){ S.goal={...G(),by:v}; }
+  save(); render(); say('Profile updated.');
+});
 
 /* ---------- sidebar gestures ---------- */
 let sx=null, sy=null;
@@ -991,10 +1090,13 @@ function onTarget(d){ const T=S.nutri, t=totals(dayItems(d)); return dayItems(d)
 function fuelStreak(){ let n=0; const d=today(); if(onTarget(ymd(d))) n++; d.setDate(d.getDate()-1); for(let i=0;i<365;i++){ if(onTarget(ymd(d))){ n++; d.setDate(d.getDate()-1);} else break; } return n; }
 function weekScore(){ let n=0; const d=today(); for(let i=0;i<7;i++){ if(onTarget(ymd(d))) n++; d.setDate(d.getDate()-1); } return n; }
 
+function fuelShort(d){ const T=S.nutri, list=dayItems(d), t=totals(list);
+  if(!list.length) return 'Nothing logged.'; if(t.kcal>T.kcal+100) return `Over by ${r0(t.kcal-T.kcal)} kcal.`; if(t.p>=T.p) return 'Targets secured.';
+  return `${Math.max(0,r0(T.kcal-t.kcal))} kcal, ${Math.max(0,r0(T.p-t.p))}g protein left.`; }
 function fuelAdvice(d){
   const T=S.nutri, list=dayItems(d), t=totals(list), isToday=d===ymd(today()); const h=new Date().getHours();
   const kLeft=r0(T.kcal-t.kcal), pLeft=r0(T.p-t.p), w=S.water[d]||0;
-  if(!list.length) return isToday? (h<12?'No intel logged yet. Open the day with 30g+ of protein — eggs, Greek yoghurt or a shake.':'Nothing logged today, Yonis. Accountability starts with the first entry. Tell me what you\'ve eaten.') : 'No entries for this day.';
+  if(!list.length) return isToday? (h<12?'No intel logged yet. Open the day with 30g+ of protein — eggs, Greek yoghurt or a shake.':'Nothing logged today, '+S.name+'. Accountability starts with the first entry. Tell me what you\'ve eaten.') : 'No entries for this day.';
   let a='';
   if(t.kcal>T.kcal+100) a=`Calorie ceiling breached by ${r0(t.kcal-T.kcal)} kcal. No drama — hold tomorrow tight and keep protein high.`;
   else if(t.p>=T.p && t.kcal<=T.kcal+100) a=`Targets secured. Protein hit, ${Math.max(0,kLeft)} kcal in reserve. Textbook execution.`;
@@ -1072,7 +1174,7 @@ function renderFuel(){
   h+=`<h2>My foods</h2><div class="card">${mf.length?mf.map(([k,f])=>`<div class="lift"><div class="ln">${esc(f.name)}<span>${f.brand?esc(f.brand)+' · ':''}${r0(f.k)} kcal · ${r1(f.p)}g P per 100g${f.each?` · 1 = ${r0(f.each)}g`:''}</span></div><button class="btn sm" data-act="f-forget" data-k="${k}">Forget</button></div>`).join(''):'<div class="sub">When you correct an item and tick "Remember", it lands here and gets used first next time.</div>'}</div>`;
   h+=`<h2>Daily targets</h2><div class="card">
     ${[['kcal','Calories','kcal'],['p','Protein','g'],['c','Carbs','g'],['f','Fat','g'],['water','Water','ml']].map(([k,l,u])=>`<div class="lift"><div class="ln">${l}<span>${u}</span></div><input class="inp" style="width:110px;height:42px;text-align:right" type="number" inputmode="numeric" data-tgt="${k}" value="${T[k]}"></div>`).join('')}
-    <div class="muted" style="margin-top:6px">Starting point for ~0.45kg/week loss at 95kg with 4 gym sessions. If the scale stalls for 2 weeks, drop 150 kcal.</div></div>`;
+    <div class="muted" style="margin-top:6px">Starting point for steady loss toward ${G().target}kg with 4 gym sessions. If the scale stalls for 2 weeks, drop 150 kcal.</div></div>`;
   return h;
 }
 function fuelHQCard(){
@@ -1119,7 +1221,7 @@ function saveItemEdit(){
   if(it._new){ delete it._new; if(editMode==='draft') draft.items.push(it); else { it.meal=mealNow(); (S.food[fuelDate]=S.food[fuelDate]||[]).push(it); } }
   if(editMode==='log') S.food[fuelDate]=[...(S.food[fuelDate]||[])];
   save(); closeModal(); render();
-  say(`Copy. ${it.name} updated: ${r0(it.kcal)} kcal, ${r0(it.p)}g protein.${S.myFoods['my_'+it.name.toLowerCase().replace(/[^a-z0-9]+/g,'_')]&&it.src==='my'?' Saved to your foods.':''}`);
+  say(it.src==='my'?'Saved.':'Updated.');
 }
 
 /* ---------- voice ---------- */
@@ -1131,7 +1233,7 @@ async function toggleMic(){
   if(listening){ return stopListening(); }
   if(gkey() && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
     try{ await startRecording(); listening=true; micUI(); startTimer(); return; }
-    catch(e){ console.warn(e); say(e&&e.name==='NotAllowedError'?'Microphone blocked. Allow it in Settings → Safari → Microphone, or type it.':'Recording unavailable here — switching to device listening.'); }
+    catch(e){ console.warn(e); say(e&&e.name==='NotAllowedError'?'Mic blocked.':'Using device listening.'); }
   }
   startDeviceSR();
 }
@@ -1149,10 +1251,10 @@ function stopListening(){
   if(recState){ const r=recState; recState=null;
     try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop());
     const len=r.chunks.reduce((a,c)=>a+c.length,0);
-    if(len < r.rate*0.6){ micUI(); say('I didn\'t catch anything. Tap the mic and try again.'); return; }
+    if(len < r.rate*0.6){ micUI(); say('Didn\'t catch that.'); return; }
     const wav=encodeWav(r.chunks,len,r.rate,16000);
-    decoding=true; micUI(); say('Copy. Decoding your meal.');
-    aiFood({audio:wav}).then(res=>applyAI(res)).catch(e=>{ decoding=false; micUI(); say('AI decode failed: '+gErrText(e)+' Type it instead, or try again.'); });
+    decoding=true; micUI(); say('Decoding.');
+    aiFood({audio:wav}).then(res=>applyAI(res)).catch(e=>{ decoding=false; micUI(); say('Decode failed. '+gErrText(e)); });
     return;
   }
   if(rec){ try{ rec.stop(); }catch(e){} }
@@ -1171,24 +1273,24 @@ function encodeWav(chunks,len,inRate,outRate){
 }
 function startDeviceSR(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const ta=$('#ftext');
-  if(!SR){ ta&&ta.focus(); say('Voice capture isn\'t available here. Tap the microphone on your keyboard and speak — I\'ll take it from there.'); return; }
+  if(!SR){ ta&&ta.focus(); say('Use keyboard mic.'); return; }
   srBase=ta?ta.value.trim():''; srFinals=''; listening=true; micUI(); startTimer();
   const run=()=>{
     rec=new SR(); rec.lang='en-GB'; rec.continuous=true; rec.interimResults=true; rec.maxAlternatives=1;
     rec.onresult=e=>{ let interim=''; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal){ const t=r[0].transcript.trim(); if(t && !srFinals.trim().endsWith(t)) srFinals+=t+' '; } else interim+=r[0].transcript; }
       const el=$('#ftext'); if(el) el.value=[srBase,srFinals.trim(),interim?'…'+interim:''].filter(Boolean).join(' '); };
     rec.onend=()=>{ if(listening){ try{ run(); }catch(e){ finishSR(); } } else finishSR(); };
-    rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ listening=false; say('Microphone blocked. Use the 🎤 on your keyboard instead.'); } };
+    rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ listening=false; say('Mic blocked.'); } };
     try{ rec.start(); }catch(e){}
   };
-  run(); say('Listening. Take your time — tap stop when you\'re finished.');
+  run(); say('Listening.');
 }
 function finishSR(){ clearInterval(recTimer); const txt=[srBase,srFinals.trim()].filter(Boolean).join(' ').trim(); rec=null; micUI(); const el=$('#ftext'); if(el) el.value=txt; if(txt) draftFromText(txt); }
 
 async function aiFood({audio,text}){
   const key=gkey(); if(!key) throw new Error('nokey');
   const mine=Object.values(S.myFoods||{}).map(f=>`- ${f.name}${f.brand?' ('+f.brand+')':''}: per 100g ${f.k} kcal, P ${f.p}g, C ${f.c}g, F ${f.f}g; one unit ≈ ${f.each}g`).join('\n');
-  const prompt=`You are SENTINEL, the food-logging assistant for Yonis (UK, London). ${audio?'Listen to the voice note. First transcribe EXACTLY what he said, word for word (UK English; he may mention UK shops like Asda, Lidl, Tesco, Aldi, brand names, and Somali foods like canjeero/laxoox, suqaar, sambusa, bariis, shaah).':'Here is what he typed.'}
+  const prompt=`You are SENTINEL, the food-logging assistant for ${S.name} (UK, London). ${audio?'Listen to the voice note. First transcribe EXACTLY what he said, word for word (UK English; he may mention UK shops like Asda, Lidl, Tesco, Aldi, brand names, and Somali foods like canjeero/laxoox, suqaar, sambusa, bariis, shaah).':'Here is what he typed.'}
 Then split it into individual food/drink items and estimate nutrition using typical UK values for the stated brand/shop if known.
 Rules: use the exact quantities he said; convert to grams/ml; cooking oil/butter counts as its own item; if he gives no amount, assume a normal UK portion; never invent foods he didn't mention.
 ${mine?'His saved foods — if he mentions one of these, use these exact values scaled to the amount:\n'+mine:''}
@@ -1212,17 +1314,17 @@ function applyAI(res){
   draft={items, meal: res.meal||mealNow(), text: txt};
   render(); setTimeout(()=>{ const d=$('#draftcard'); if(d) d.scrollIntoView({behavior:'smooth',block:'start'}); },60);
   const t=totals(items); const low=items.filter(i=>i.low).length;
-  say(items.length?`Heard you. ${items.length} item${items.length>1?'s':''}, ${r0(t.kcal)} kcal, ${r0(t.p)}g protein.${low?` ${low} flagged as a rough estimate — check ${low>1?'them':'it'}.`:' Check it, then log it.'}`:'I heard you, but couldn\'t pick out any foods. Try again naming each item.');
+  say(items.length?`${items.length} items. ${r0(t.kcal)} kcal.${low?' Check flagged.':''}`:'No foods found.');
 }
 function draftFromText(txt){
-  if(gkey()){ decoding=true; micUI(); aiFood({text:txt}).then(res=>{ if(!res.transcript) res.transcript=txt; applyAI(res); }).catch(e=>{ decoding=false; localDraft(txt); say('AI unavailable ('+gErrText(e)+') — used the built-in breakdown instead.'); }); return; }
+  if(gkey()){ decoding=true; micUI(); aiFood({text:txt}).then(res=>{ if(!res.transcript) res.transcript=txt; applyAI(res); }).catch(e=>{ decoding=false; localDraft(txt); say('AI offline. Used built-in.'); }); return; }
   localDraft(txt);
 }
 function localDraft(txt){
   const res=parseMeal(txt); draft={items:res.items, meal:res.meal, text:txt};
   render(); setTimeout(()=>{ const d=$('#draftcard'); if(d) d.scrollIntoView({behavior:'smooth',block:'start'}); },60);
   const unk=res.items.filter(x=>x.unknown).length; const t=totals(res.items);
-  say(res.items.length? `Breakdown ready: ${res.items.length} item${res.items.length>1?'s':''}, ${r0(t.kcal)} kcal, ${r0(t.p)}g protein.${unk?` ${unk} need${unk>1?'':'s'} values — tap Edit.`:' Check it, then log it.'}` : 'I couldn\'t identify those foods. Name each one with an amount.');
+  say(res.items.length? `${res.items.length} items. ${r0(t.kcal)} kcal.${unk?' Fill in flagged.':''}` : 'No foods found.');
 }
 
 function copyWeek(){
@@ -1231,7 +1333,7 @@ function copyWeek(){
     lines.push(`${x.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}: ${its.length?`${r0(t.kcal)} kcal, P ${r0(t.p)}g, C ${r0(t.c)}g, F ${r0(t.f)}g, water ${r1((S.water[k]||0)/1000)}L — ${its.map(it=>`${it.amount} ${it.name}${it.brand?' ('+it.brand+')':''}`).join('; ')}`:'nothing logged'}`); }
   const gym=[]; for(let w=1;w<=NUMW;w++) DAYS.forEach((dd,i)=>{ const sd=sessionDate(w,i); if(daysBetween(sd,d)>=0 && daysBetween(sd,d)<7) gym.push(`${dd.full} ${dd.name}: ${isDone(w,dd.key)?'done':'missed/not yet'}`); });
   const wi=[...S.weighins].sort((a,b)=>a.d<b.d?-1:1).slice(-6).map(x=>`${x.d}: ${x.kg}kg`).join(', ');
-  const txt=`You're my nutrition coach. I'm Yonis, 30s-ish male, started at 95kg aiming for 81kg by June/July 2027 (~0.45kg/week). I lift full-body Mon–Thu lunchtimes (60 min) and want to keep strength while losing fat. My daily targets: ${T.kcal} kcal, ${T.p}g protein, ${T.c}g carbs, ${T.f}g fat, ${T.water/1000}L water.
+  const txt=`You're my nutrition coach. I'm ${S.name}, started at ${G().start}kg aiming for ${G().target}kg by ${G().by}. I lift full-body Mon–Thu lunchtimes (60 min) and want to keep strength while losing fat. My daily targets: ${T.kcal} kcal, ${T.p}g protein, ${T.c}g carbs, ${T.f}g fat, ${T.water/1000}L water.
 
 My last 7 days of food:
 ${lines.join('\n')}
@@ -1240,7 +1342,7 @@ Gym this week: ${gym.join('; ')||'n/a'}
 Recent weigh-ins: ${wi||'none'}
 
 Please: 1) tell me honestly how I did, 2) point out the 2–3 biggest wins and the 2–3 biggest problems, 3) give me simple, specific swaps using foods I already eat, and 4) say whether my targets need adjusting. Keep it short and direct.`;
-  const done=()=>say('Week copied. Open Claude and paste it in for a full review.');
+  const done=()=>say('Week copied.');
   try{ navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done)); }catch(e){ fallbackCopy(txt,done); }
 }
 function fallbackCopy(txt,done){ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done(); }catch(e){ say('Copy failed on this device.'); } ta.remove(); }
@@ -1251,24 +1353,24 @@ document.addEventListener('click',ev=>{
   if(!a.startsWith('f-') && a!=='fuel') return;
   fuelDefaults();
   switch(a){
-    case 'fuel': fuelDate=ymd(today()); go({type:'fuel',w:view.w}); say(fuelAdvice(fuelDate)); break;
+    case 'fuel': fuelDate=ymd(today()); go({type:'fuel',w:view.w}); say(fuelShort(fuelDate)); break;
     case 'f-day': { const d=parseD(fuelDate); d.setDate(d.getDate()+(+b.dataset.v)); if(d>today()) break; fuelDate=ymd(d); draft=null; render(); } break;
-    case 'f-water': { const v=Math.max(0,(S.water[fuelDate]||0)+(+b.dataset.v)); S.water[fuelDate]=v; save(); render(); if(+b.dataset.v>0 && v>=S.nutri.water && v-250<S.nutri.water) say('Hydration target hit. Good discipline.'); } break;
+    case 'f-water': { const v=Math.max(0,(S.water[fuelDate]||0)+(+b.dataset.v)); S.water[fuelDate]=v; save(); render(); if(+b.dataset.v>0 && v>=S.nutri.water && v-250<S.nutri.water) say('Water target hit.'); } break;
     case 'f-mic': toggleMic(); break;
-    case 'f-parse': { const t=($('#ftext').value||'').trim(); if(!t){ say('Tell me what you ate first.'); break; } draftFromText(t); } break;
+    case 'f-parse': { const t=($('#ftext').value||'').trim(); if(!t){ say('Nothing to log.'); break; } draftFromText(t); } break;
     case 'f-cancel': draft=null; render(); break;
-    case 'f-log': { const meal=($('#fmeal')&&$('#fmeal').value)||draft.meal; const list=(S.food[fuelDate]=S.food[fuelDate]||[]); draft.items.forEach(it=>{ it.meal=meal; list.push(it); }); const t=totals(draft.items); draft=null; save(); render(); say(`${meal} logged: ${r0(t.kcal)} kcal, ${r0(t.p)}g protein. ${fuelAdvice(fuelDate)}`); } break;
+    case 'f-log': { const meal=($('#fmeal')&&$('#fmeal').value)||draft.meal; const list=(S.food[fuelDate]=S.food[fuelDate]||[]); draft.items.forEach(it=>{ it.meal=meal; list.push(it); }); const t=totals(draft.items); draft=null; save(); render(); say(`${meal} logged. ${r0(t.kcal)} kcal.`); } break;
     case 'f-edit': openItemEdit(b.dataset.mode,b.dataset.id,false); break;
     case 'f-add': openItemEdit(b.dataset.mode||'log',null,true); break;
     case 'f-del': { if(b.dataset.mode==='draft'){ draft.items=draft.items.filter(x=>x.id!==b.dataset.id); } else { S.food[fuelDate]=dayItems(fuelDate).filter(x=>x.id!==b.dataset.id); save(); } render(); } break;
     case 'f-remember': editItem._remember=!editItem._remember; $('#ed-rem').classList.toggle('on',!!editItem._remember); break;
     case 'f-save': saveItemEdit(); break;
-    case 'f-forget': delete S.myFoods[b.dataset.k]; save(); render(); say('Removed from your foods.'); break;
+    case 'f-forget': delete S.myFoods[b.dataset.k]; save(); render(); say('Removed.'); break;
     case 'f-copy': copyWeek(); break;
   }
 });
 document.addEventListener('change',ev=>{
-  const k=ev.target.dataset && ev.target.dataset.tgt; if(k){ const v=parseFloat(ev.target.value); if(v>0){ fuelDefaults(); S.nutri[k]=Math.round(v); save(); render(); say('Target updated.'); } }
+  const k=ev.target.dataset && ev.target.dataset.tgt; if(k){ const v=parseFloat(ev.target.value); if(v>0){ fuelDefaults(); S.nutri[k]=Math.round(v); save(); render(); say('Target set.'); } }
   if(ev.target.id==='fmeal' && draft) draft.meal=ev.target.value;
 });
 document.addEventListener('input',ev=>{ if(ev.target.id==='ftext' && draft) draft.text=ev.target.value; });
