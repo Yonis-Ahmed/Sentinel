@@ -150,6 +150,7 @@ h2{font-family:var(--head);font-weight:600;font-size:20px;margin:28px 0 12px;col
 .step{display:flex;align-items:center;background:#fff;border-radius:999px;box-shadow:0 3px 10px rgba(62,42,71,.06)}
 .step button{width:36px;height:40px;font-size:18px;color:var(--tx)}
 .step .val{min-width:28px;text-align:center;font-family:var(--head);font-weight:700;font-size:17px}
+.mic-live{animation:micpulse 1.4s ease-in-out infinite}@keyframes micpulse{50%{box-shadow:0 0 0 10px rgba(242,140,75,.18)}}
 .tick{width:44px;height:44px;border-radius:14px;background:var(--s2);display:grid;place-items:center;color:var(--tx3);transition:background .15s}
 .set.done .tick{background:var(--volt);color:#fff;box-shadow:0 6px 14px rgba(242,140,75,.4)}
 .exfoot{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--tx3)}
@@ -914,7 +915,7 @@ const NUMWORDS = {zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8
 function fuelDefaults(){ if(!S.food) S.food={}; if(!S.myFoods) S.myFoods={}; if(!S.water) S.water={}; if(!S.nutri) S.nutri={kcal:2200,p:160,f:70,c:220,water:3000}; }
 let fuelDate = null; // ymd
 let draft = null;   // {items:[], meal, text}
-let listening = false, rec = null;
+let listening = false, rec = null, decoding = false, recState = null, recTimer = null, srFinals = '', srBase = '';
 
 function cap(s){ return s.replace(/\b\w/g,c=>c.toUpperCase()); }
 function mealNow(){ const h=new Date().getHours(); return h<11?'Breakfast':h<15?'Lunch':h<17?'Snack':'Dinner'; }
@@ -1014,7 +1015,7 @@ function macroBar(lbl,val,tgt,col){ const p=Math.min(100,val/tgt*100); return `<
 function itemRow(it,mode){
   return `<div class="lift" style="align-items:flex-start">
     <div class="ln">${esc(it.name)}${it.unknown?' <span style="color:var(--red);display:inline;font-size:11px;font-weight:600">· NEEDS VALUES</span>':''}
-      <span>${esc(it.amount)}${it.g && !/^\d+(\.\d+)?(g|ml)$/.test(it.amount)?` · ${it.g}${/ml|milk|juice|coffee|latte|tea|coke|water/i.test(it.name+it.amount)?'ml':'g'}`:''}${it.brand?' · '+esc(it.brand):''}${it.src==='my'?' · <b style="color:var(--volt)">my food</b>':''}</span>
+      <span>${esc(it.amount)}${it.g && !/^\d+(\.\d+)?(g|ml)$/.test(it.amount)?` · ${it.g}${/ml|milk|juice|coffee|latte|tea|coke|water/i.test(it.name+it.amount)?'ml':'g'}`:''}${it.brand?' · '+esc(it.brand):''}${it.src==='my'?' · <b style="color:var(--volt)">my food</b>':''}${it.src==='ai'?' · <b style="color:var(--lav)">AI</b>':''}${it.low?' · <b style="color:var(--amber)">rough estimate</b>':''}</span>
       <span>P ${r0(it.p)}g · C ${r0(it.c)}g · F ${r0(it.f)}g</span></div>
     <div style="text-align:right"><div style="font-weight:700;font-size:16px">${r0(it.kcal)}<span style="font-size:11px;color:var(--tx3);font-weight:500"> kcal</span></div>
       <div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end"><button class="btn sm" style="height:32px;padding:0 12px" data-act="f-edit" data-mode="${mode}" data-id="${it.id}">Edit</button><button class="btn sm" style="height:32px;width:32px;padding:0" data-act="f-del" data-mode="${mode}" data-id="${it.id}" aria-label="Remove">✕</button></div></div></div>`;
@@ -1038,18 +1039,18 @@ function renderFuel(){
   // input
   h+=`<h2>Tell SENTINEL what you ate</h2><div class="card">
     <div style="display:flex;gap:10px;align-items:flex-start">
-      <button class="btn ${listening?'p':''}" style="flex:none;width:56px;height:56px;border-radius:50%;padding:0" data-act="f-mic" aria-label="Speak">${listening?'■':'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>'}</button>
+      <button class="btn ${listening?'p mic-live':''}" style="flex:none;width:56px;height:56px;border-radius:50%;padding:0" data-act="f-mic" aria-label="Speak" ${decoding?'disabled':''}>${decoding?'…':listening?'■':'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>'}</button>
       <textarea class="inp" id="ftext" rows="3" style="height:auto;padding:12px 14px;resize:none;line-height:1.45" placeholder='e.g. 3 medium eggs from Asda with 10g olive oil, half a small onion and 1 wrap from Lidl'>${draft?esc(draft.text):''}</textarea></div>
-    <div class="muted" id="fhint" style="margin-top:8px">${listening?'Listening… tap ■ when done.':'Tap the mic and speak, or use the 🎤 on your keyboard.'}</div>
-    <button class="btn p full" style="margin-top:12px" data-act="f-parse">Break it down</button></div>`;
+    <div class="muted" id="fhint" style="margin-top:8px">${decoding?'<b style="color:var(--volt)">SENTINEL is decoding your meal…</b>':listening?`<b style="color:var(--volt)">● Listening <span id="rectime">0:00</span></b> — take your time, pause whenever. Tap ■ when you're finished.`:gkey()?'AI listening on: tap the mic, say everything you ate, tap ■ when done.':'Tap the mic and speak, or use the 🎤 on your keyboard. Add a Gemini key in HQ → Settings for exact AI listening.'}</div>
+    <button class="btn p full" style="margin-top:12px" data-act="f-parse" ${decoding||listening?'disabled':''}>${gkey()?'Break it down with AI':'Break it down'}</button></div>`;
   if(draft){
     const dt2=totals(draft.items);
-    h+=`<div class="card" style="margin-top:12px;box-shadow:0 10px 30px rgba(242,140,75,.2)"><div style="display:flex;justify-content:space-between;align-items:center"><div class="kicker">Breakdown · check it</div>
+    h+=`<div class="card" id="draftcard" style="margin-top:12px;box-shadow:0 10px 30px rgba(242,140,75,.2)"><div style="display:flex;justify-content:space-between;align-items:center"><div class="kicker">Breakdown · check it</div>
       <select class="inp" id="fmeal" style="width:auto;height:36px;font-size:13px;padding:0 10px">${['Breakfast','Lunch','Snack','Dinner'].map(m=>`<option ${m===draft.meal?'selected':''}>${m}</option>`).join('')}</select></div>
       <div style="margin-top:6px">${draft.items.length?draft.items.map(it=>itemRow(it,'draft')).join(''):'<div class="sub">I couldn\'t pick out any foods. Try naming each item with an amount.</div>'}</div>
       <button class="btn sm" style="margin-top:10px" data-act="f-add" data-mode="draft">+ Add item</button>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"><div style="font-weight:700">${r0(dt2.kcal)} kcal <span style="font-weight:500;color:var(--tx2);font-size:13px">· P ${r0(dt2.p)}g · C ${r0(dt2.c)}g · F ${r0(dt2.f)}g</span></div></div>
-      <div class="muted" style="margin-top:6px">Values are typical UK figures. If something's off, tap Edit, match it to the label and tick "Remember" so it's exact next time.</div>
+      <div class="muted" style="margin-top:6px">${draft.items.some(i=>i.src==='ai')?'Heard and estimated by AI.':'Values are typical UK figures.'} If something's off, tap Edit, match it to the label and tick "Remember" so it's exact next time.</div>
       <div class="grid2" style="margin-top:12px"><button class="btn" data-act="f-cancel">Discard</button><button class="btn p" data-act="f-log" ${draft.items.length?'':'disabled'}>Log it ✓</button></div></div>`;
   }
   // log
@@ -1122,27 +1123,108 @@ function saveItemEdit(){
 }
 
 /* ---------- voice ---------- */
-function toggleMic(){
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  const ta=$('#ftext');
-  if(!SR){ ta && ta.focus(); say('Voice capture isn\'t available here. Tap the microphone on your keyboard and speak — I\'ll take it from there.'); return; }
-  if(listening && rec){ try{rec.stop();}catch(e){} return; }
-  try{
-    rec=new SR(); rec.lang='en-GB'; rec.interimResults=true; rec.continuous=true;
-    const startText = ta? ta.value.trim() : '';
-    rec.onresult=e=>{ let s=''; for(let i=0;i<e.results.length;i++) s+=e.results[i][0].transcript; const el=$('#ftext'); if(el) el.value=(startText?startText+' ':'')+s; };
-    rec.onend=()=>{ listening=false; const el=$('#ftext'); const txt=el?el.value:''; render(); const el2=$('#ftext'); if(el2) el2.value=txt; if(txt.trim()) { draftFromText(txt); } };
-    rec.onerror=e=>{ listening=false; render(); say(e.error==='not-allowed'?'Microphone blocked. Use the 🎤 on your keyboard instead.':'Didn\'t catch that. Try again or type it.'); };
-    rec.start(); listening=true; const keep=ta?ta.value:''; render(); const el=$('#ftext'); if(el) el.value=keep;
-    say('Listening. Tell me everything you ate.');
-  }catch(e){ listening=false; say('Voice capture failed. Use the 🎤 on your keyboard.'); }
+/* ---------- listening: AI (Gemini) recording, or improved device recognition ---------- */
+function micUI(){ const keep=$('#ftext')?$('#ftext').value:''; render(); const t=$('#ftext'); if(t) t.value=keep; }
+function startTimer(){ clearInterval(recTimer); const t0=Date.now(); recTimer=setInterval(()=>{ const el=$('#rectime'); if(!el) return; const s=Math.floor((Date.now()-t0)/1000); el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); if(s>=120 && recState) toggleMic(); },250); }
+async function toggleMic(){
+  if(decoding) return;
+  if(listening){ return stopListening(); }
+  if(gkey() && navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+    try{ await startRecording(); listening=true; micUI(); startTimer(); return; }
+    catch(e){ console.warn(e); say(e&&e.name==='NotAllowedError'?'Microphone blocked. Allow it in Settings → Safari → Microphone, or type it.':'Recording unavailable here — switching to device listening.'); }
+  }
+  startDeviceSR();
+}
+async function startRecording(){
+  ensureAudio(); if(!actx) throw new Error('audio');
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  if(actx.state==='suspended') await actx.resume();
+  const src=actx.createMediaStreamSource(stream); const proc=actx.createScriptProcessor(4096,1,1); const chunks=[];
+  proc.onaudioprocess=e=>{ chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+  const mute=actx.createGain(); mute.gain.value=0; src.connect(proc); proc.connect(mute); mute.connect(actx.destination);
+  recState={stream,src,proc,mute,chunks,rate:actx.sampleRate};
+}
+function stopListening(){
+  listening=false; clearInterval(recTimer);
+  if(recState){ const r=recState; recState=null;
+    try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop());
+    const len=r.chunks.reduce((a,c)=>a+c.length,0);
+    if(len < r.rate*0.6){ micUI(); say('I didn\'t catch anything. Tap the mic and try again.'); return; }
+    const wav=encodeWav(r.chunks,len,r.rate,16000);
+    decoding=true; micUI(); say('Copy. Decoding your meal.');
+    aiFood({audio:wav}).then(res=>applyAI(res)).catch(e=>{ decoding=false; micUI(); say('AI decode failed: '+gErrText(e)+' Type it instead, or try again.'); });
+    return;
+  }
+  if(rec){ try{ rec.stop(); }catch(e){} }
+}
+function encodeWav(chunks,len,inRate,outRate){
+  const all=new Float32Array(len); let o=0; chunks.forEach(c=>{ all.set(c,o); o+=c.length; });
+  const ratio=inRate/outRate, n=Math.floor(len/ratio), pcm=new Int16Array(n);
+  let peak=0; for(let i=0;i<len;i++){ const a=Math.abs(all[i]); if(a>peak) peak=a; } const gain=peak>0.02&&peak<0.5?0.9/peak:1;
+  for(let i=0;i<n;i++){ const s0=Math.floor(i*ratio), s1=Math.min(len,Math.floor((i+1)*ratio)); let sum=0; for(let j=s0;j<s1;j++) sum+=all[j]; let v=(sum/Math.max(1,s1-s0))*gain; v=Math.max(-1,Math.min(1,v)); pcm[i]=v<0?v*0x8000:v*0x7fff; }
+  const buf=new ArrayBuffer(44+pcm.length*2), dv=new DataView(buf); const w=(off,str)=>{ for(let i=0;i<str.length;i++) dv.setUint8(off+i,str.charCodeAt(i)); };
+  w(0,'RIFF'); dv.setUint32(4,36+pcm.length*2,true); w(8,'WAVE'); w(12,'fmt '); dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,outRate,true); dv.setUint32(28,outRate*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true); w(36,'data'); dv.setUint32(40,pcm.length*2,true);
+  new Int16Array(buf,44).set(pcm);
+  const bytes=new Uint8Array(buf); let bin=''; for(let i=0;i<bytes.length;i+=0x8000) bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000));
+  return btoa(bin);
+}
+function startDeviceSR(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const ta=$('#ftext');
+  if(!SR){ ta&&ta.focus(); say('Voice capture isn\'t available here. Tap the microphone on your keyboard and speak — I\'ll take it from there.'); return; }
+  srBase=ta?ta.value.trim():''; srFinals=''; listening=true; micUI(); startTimer();
+  const run=()=>{
+    rec=new SR(); rec.lang='en-GB'; rec.continuous=true; rec.interimResults=true; rec.maxAlternatives=1;
+    rec.onresult=e=>{ let interim=''; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal){ const t=r[0].transcript.trim(); if(t && !srFinals.trim().endsWith(t)) srFinals+=t+' '; } else interim+=r[0].transcript; }
+      const el=$('#ftext'); if(el) el.value=[srBase,srFinals.trim(),interim?'…'+interim:''].filter(Boolean).join(' '); };
+    rec.onend=()=>{ if(listening){ try{ run(); }catch(e){ finishSR(); } } else finishSR(); };
+    rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ listening=false; say('Microphone blocked. Use the 🎤 on your keyboard instead.'); } };
+    try{ rec.start(); }catch(e){}
+  };
+  run(); say('Listening. Take your time — tap stop when you\'re finished.');
+}
+function finishSR(){ clearInterval(recTimer); const txt=[srBase,srFinals.trim()].filter(Boolean).join(' ').trim(); rec=null; micUI(); const el=$('#ftext'); if(el) el.value=txt; if(txt) draftFromText(txt); }
+
+async function aiFood({audio,text}){
+  const key=gkey(); if(!key) throw new Error('nokey');
+  const mine=Object.values(S.myFoods||{}).map(f=>`- ${f.name}${f.brand?' ('+f.brand+')':''}: per 100g ${f.k} kcal, P ${f.p}g, C ${f.c}g, F ${f.f}g; one unit ≈ ${f.each}g`).join('\n');
+  const prompt=`You are SENTINEL, the food-logging assistant for Yonis (UK, London). ${audio?'Listen to the voice note. First transcribe EXACTLY what he said, word for word (UK English; he may mention UK shops like Asda, Lidl, Tesco, Aldi, brand names, and Somali foods like canjeero/laxoox, suqaar, sambusa, bariis, shaah).':'Here is what he typed.'}
+Then split it into individual food/drink items and estimate nutrition using typical UK values for the stated brand/shop if known.
+Rules: use the exact quantities he said; convert to grams/ml; cooking oil/butter counts as its own item; if he gives no amount, assume a normal UK portion; never invent foods he didn't mention.
+${mine?'His saved foods — if he mentions one of these, use these exact values scaled to the amount:\n'+mine:''}
+Return ONLY JSON: {"transcript": string, "meal": "Breakfast"|"Lunch"|"Snack"|"Dinner"|null, "items":[{"name": string, "brand": string, "amount": string (as he said it, e.g. "3 medium"), "grams": number, "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": "high"|"medium"|"low"}]}`;
+  const parts=[{text:prompt}]; if(audio) parts.push({inlineData:{mimeType:'audio/wav',data:audio}}); else parts.push({text:'He typed: '+text});
+  let last='';
+  for(const m of [S.gtext||'gemini-flash-latest','gemini-2.5-flash','gemini-3-flash-preview']){
+    const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+      body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{temperature:0.1,responseMimeType:'application/json'}})});
+    if(r.ok){ const j=await r.json(); const t=((((j.candidates||[])[0]||{}).content||{}).parts||[]).map(p=>p.text||'').join(''); try{ const out=JSON.parse(t.replace(/^```json|```$/g,'').trim()); S.gtext=m; return out; }catch(e){ last='parse'; } }
+    else { last=String(r.status); if(r.status!==404 && r.status!==400) break; }
+  }
+  throw new Error(last||'failed');
+}
+function applyAI(res){
+  decoding=false;
+  const items=(res.items||[]).map(x=>{ const g=Math.max(0,+x.grams||0); const it={id:uid(),name:cap(String(x.name||'Food')),brand:String(x.brand||''),amount:String(x.amount||'1'),g:r0(g),count:parseFloat(x.amount)||1,kcal:r0(+x.kcal||0),p:r1(+x.protein||0),c:r1(+x.carbs||0),f:r1(+x.fat||0),src:'ai',unknown:!(+x.kcal>0),low:x.confidence==='low'};
+    if(g>0){ it.k100=it.kcal/g*100; it.p100=it.p/g*100; it.c100=it.c/g*100; it.f100=it.f/g*100; } else { it.k100=it.p100=it.c100=it.f100=0; }
+    return it; });
+  const txt=String(res.transcript||($('#ftext')&&$('#ftext').value)||'');
+  draft={items, meal: res.meal||mealNow(), text: txt};
+  render(); setTimeout(()=>{ const d=$('#draftcard'); if(d) d.scrollIntoView({behavior:'smooth',block:'start'}); },60);
+  const t=totals(items); const low=items.filter(i=>i.low).length;
+  say(items.length?`Heard you. ${items.length} item${items.length>1?'s':''}, ${r0(t.kcal)} kcal, ${r0(t.p)}g protein.${low?` ${low} flagged as a rough estimate — check ${low>1?'them':'it'}.`:' Check it, then log it.'}`:'I heard you, but couldn\'t pick out any foods. Try again naming each item.');
 }
 function draftFromText(txt){
+  if(gkey()){ decoding=true; micUI(); aiFood({text:txt}).then(res=>{ if(!res.transcript) res.transcript=txt; applyAI(res); }).catch(e=>{ decoding=false; localDraft(txt); say('AI unavailable ('+gErrText(e)+') — used the built-in breakdown instead.'); }); return; }
+  localDraft(txt);
+}
+function localDraft(txt){
   const res=parseMeal(txt); draft={items:res.items, meal:res.meal, text:txt};
-  render();
+  render(); setTimeout(()=>{ const d=$('#draftcard'); if(d) d.scrollIntoView({behavior:'smooth',block:'start'}); },60);
   const unk=res.items.filter(x=>x.unknown).length; const t=totals(res.items);
   say(res.items.length? `Breakdown ready: ${res.items.length} item${res.items.length>1?'s':''}, ${r0(t.kcal)} kcal, ${r0(t.p)}g protein.${unk?` ${unk} need${unk>1?'':'s'} values — tap Edit.`:' Check it, then log it.'}` : 'I couldn\'t identify those foods. Name each one with an amount.');
 }
+
 function copyWeek(){
   const lines=[]; const d=today(); const T=S.nutri;
   for(let i=6;i>=0;i--){ const x=new Date(d); x.setDate(d.getDate()-i); const k=ymd(x); const its=dayItems(k); const t=totals(its);
