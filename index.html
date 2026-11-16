@@ -283,10 +283,19 @@ const STANDALONE = !(window.claude && window.claude.use);
 
 /* ================= STATE ================= */
 const PKEY='sentinel.profiles';
-function loadProfiles(){ try{ const p=JSON.parse(localStorage.getItem(PKEY)); if(p&&p.list&&p.list.length) return p; }catch(e){} return {active:'main',list:[{id:'main',name:'Yonis'}]}; }
+function loadProfiles(){
+  let p=null; try{ p=JSON.parse(localStorage.getItem(PKEY)); }catch(e){}
+  if(!p||!p.list||!p.list.length) p={active:'main',list:[{id:'main',name:'Yonis'}]};
+  let hasMain=false; try{ hasMain=!!localStorage.getItem('sentinel.v1'); }catch(e){}
+  p.list.forEach(x=>{ if(x.setup===undefined) x.setup = x.id==='main' ? (hasMain||!!x.pin) : true; });
+  p.removed=p.removed||[];
+  if(!p.list.some(x=>x.id==='ubs') && !p.removed.includes('ubs')) p.list.push({id:'ubs',name:'Ubs',setup:false});
+  return p;
+}
 let PROF=loadProfiles();
 function storeKey(id){ return id==='main'?'sentinel.v1':'sentinel.v1.'+id; }
 function saveProfiles(){ try{ localStorage.setItem(PKEY,JSON.stringify(PROF)); }catch(e){} }
+saveProfiles();
 let LSKEY = storeKey(PROF.active);
 function G(){ return S.goal || {start:95,target:81,by:'2027-06-30'}; }
 function fresh(){
@@ -887,6 +896,17 @@ function openNewProfile(){
    <div class="grid2" style="margin-top:14px"><button class="btn" data-act="profiles">Back</button><button class="btn p" data-act="pcreate">Create</button></div>`;
   $('#modal').classList.add('on');
 }
+function buildProfileState(name,cur,tgt,by,lvl){
+  const sc={new:0.45,some:0.6,exp:0.8}[lvl]||0.6; const w={};
+  Object.keys(START).forEach(k=>{ const t=EX[k].t, v=START[k];
+    if(t==='time') w[k]=lvl==='new'?30:40; else if(t==='bw') w[k]=0;
+    else if(t==='db'||t==='carry') w[k]=Math.max(2,roundTo(v*sc,2));
+    else if(t==='bb') w[k]=Math.max(k==='hipthrust'||k==='rdl'||k==='deadlift'?30:20,roundTo(v*sc,2.5));
+    else w[k]=Math.max(5,roundTo(v*sc,2.5)); });
+  const kcal=Math.min(3200,Math.max(1400,Math.round(cur*24/50)*50)), pr=Math.min(200,Math.max(90,Math.round(tgt*1.9/5)*5)), fat=Math.round(kcal*0.28/9/5)*5, carb=Math.max(80,Math.round((kcal-pr*4-fat*9)/4/5)*5);
+  const ns=fresh(); Object.assign(ns,{name, goal:{start:cur,target:tgt,by}, startDate:ymd(mondayOf(today())), weights:w, weighins:[{d:ymd(today()),kg:cur}], nutri:{kcal,p:pr,f:fat,c:carb,water:Math.round(cur*35/250)*250}, voice:S.voice, gvoice:S.gvoice||'Kore', voiceName:S.voiceName, updatedAt:Date.now()});
+  return ns;
+}
 function createProfile(){
   const name=($('#np-name').value||'').trim(), cur=parseFloat($('#np-cur').value), tgt=parseFloat($('#np-tgt').value), by=$('#np-by').value, lvl=$('#np-lvl').value;
   const err=m=>{ $('#np-err').textContent=m; };
@@ -902,7 +922,7 @@ function createProfile(){
   save();
   const ns=fresh(); Object.assign(ns,{name, goal:{start:cur,target:tgt,by}, startDate:ymd(mondayOf(today())), weights:w, weighins:[{d:ymd(today()),kg:cur}], nutri:{kcal,p:pr,f:fat,c:carb,water:Math.round(cur*35/250)*250}, voice:S.voice, gvoice:S.gvoice||'Kore', voiceName:S.voiceName, updatedAt:Date.now()});
   try{ localStorage.setItem(storeKey(id),JSON.stringify(ns)); }catch(e){}
-  PROF.list.push({id,name}); saveProfiles(); switchProfile(id);
+  PROF.list.push({id,name,setup:true}); saveProfiles(); switchProfile(id);
 }
 function switchProfile(id){
   if(id===PROF.active){ closeModal(); return; }
@@ -916,7 +936,7 @@ function syncProfileName(){ const p=PROF.list.find(x=>x.id===PROF.active); if(p 
 function deleteProfile(){
   if(PROF.active==='main') return; const id=PROF.active;
   try{ localStorage.removeItem(storeKey(id)); }catch(e){}
-  PROF.list=PROF.list.filter(p=>p.id!==id); PROF.active='main'; saveProfiles(); LSKEY=storeKey('main');
+  PROF.list=PROF.list.filter(p=>p.id!==id); if(!PROF.removed.includes(id)) PROF.removed.push(id); PROF.active='main'; saveProfiles(); LSKEY=storeKey('main');
   try{ const raw=localStorage.getItem(LSKEY); S=raw?Object.assign(fresh(),JSON.parse(raw)):fresh(); S.weights=Object.assign({...START},S.weights||{}); }catch(e){ S=fresh(); }
   closeModal(); view={type:'hq',w:cur().w}; render(); say('Profile deleted.'); syncCloud();
 }
@@ -926,7 +946,7 @@ document.addEventListener('click',ev=>{
     case 'profiles': openProfiles(); break;
     case 'pnew': openNewProfile(); break;
     case 'pcreate': createProfile(); break;
-    case 'pswitch': { const P=profOf(b.dataset.id); if(P&&P.pin&&P.id!==PROF.active){ closeModal(); showLaunchPin(P.id); } else switchProfile(b.dataset.id); } break;
+    case 'pswitch': { const P=profOf(b.dataset.id); if(P&&!P.setup){ closeModal(); pin.id=P.id; setupPending={id:P.id}; showSetup(P.id); } else if(P&&P.pin&&P.id!==PROF.active){ closeModal(); showLaunchPin(P.id); } else switchProfile(b.dataset.id); } break;
     case 'pdel': $('#sheet').innerHTML=`<div class="kicker" style="color:var(--red)">Delete profile</div><div style="font-family:var(--head);font-weight:700;font-size:24px;margin-top:4px">Delete ${esc(S.name)}?</div><div class="sub">All of ${esc(S.name)}'s workouts, food and weigh-ins on this device go. Can't be undone.</div><div class="grid2" style="margin-top:16px"><button class="btn" data-act="mcancel">Keep</button><button class="btn" style="background:var(--red);color:#fff" data-act="pdelyes">Delete</button></div>`; $('#modal').classList.add('on'); break;
     case 'pdelyes': deleteProfile(); break;
   }
@@ -1482,6 +1502,11 @@ async function pinPress(v){
     if(pin.ctx==='vremove'){ P.pin=null; saveProfiles(); pin.busy=false; closeModal(); render(); say('Passcode removed.'); return; }
     pin.ctx='set1'; pin.buf=''; setPinTitle('New passcode'); pinRefresh('Choose 6 digits.'); pin.busy=false; return;
   }
+  if(pin.ctx==='lset1'){ pin.first=code; pin.ctx='lset2'; pin.buf=''; setPinTitle('Confirm passcode'); pinRefresh('Enter the same 6 digits again.'); pin.busy=false; return; }
+  if(pin.ctx==='lset2'){
+    if(code!==pin.first){ pin.ctx='lset1'; pin.buf=''; pin.first=null; setPinTitle('Create your passcode'); pinRefresh("Didn't match. Start again.",true); pin.busy=false; return; }
+    pin.busy=false; await finishSetup(code); return;
+  }
   if(pin.ctx==='set1'){ pin.first=code; pin.ctx='set2'; pin.buf=''; setPinTitle('Confirm passcode'); pinRefresh('Enter it once more.'); pin.busy=false; return; }
   if(pin.ctx==='set2'){
     if(code!==pin.first){ pin.ctx='set1'; pin.buf=''; pin.first=null; setPinTitle('New passcode'); pinRefresh("Didn't match. Start again.",true); pin.busy=false; return; }
@@ -1514,7 +1539,7 @@ function showWelcome(){
 function showPicker(){
   const L=$('#launch'); L.classList.add('on');
   const tiles=PROF.list.map((p,i)=>{ const t=TILE[i%TILE.length];
-    return `<button class="pftile" style="animation-delay:${i*.1}s" data-act="lpick" data-id="${p.id}"><div class="pfface" style="background:linear-gradient(145deg,${t[0]},${t[1]});color:${t[2]};box-shadow:0 18px 40px rgba(0,0,0,.35)">${esc(p.name.charAt(0).toUpperCase())}${p.pin?'<span class="pflock"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>':''}</div><span style="font-size:17px;font-weight:500">${esc(p.name)}</span></button>`; }).join('');
+    return `<button class="pftile" style="animation-delay:${i*.1}s" data-act="lpick" data-id="${p.id}"><div class="pfface" style="background:linear-gradient(145deg,${t[0]},${t[1]});color:${t[2]};box-shadow:0 18px 40px rgba(0,0,0,.35)">${esc(p.name.charAt(0).toUpperCase())}${p.pin?'<span class="pflock"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>':''}</div><span style="font-size:17px;font-weight:500">${esc(p.name)}</span>${p.setup?'':'<span style="font-size:12px;color:var(--volt);margin-top:-8px">New · tap to set up</span>'}</button>`; }).join('');
   L.innerHTML=launchShell(`<div class="inner"><div style="position:absolute;top:calc(var(--st) + 30px);left:-6px;font-size:120px;font-weight:300;letter-spacing:-4px;color:rgba(255,255,255,.05)">WHO</div>
    <div style="position:relative"><div class="kicker" style="color:var(--volt)">SENTINEL</div><div style="font-size:42px;font-weight:300;letter-spacing:-1.4px;line-height:1.05;margin-top:8px">Who's<br>training<span style="color:var(--volt)">?</span></div></div>
    <div class="pfgrid">${tiles}<button class="pftile" style="animation-delay:${PROF.list.length*.1}s" data-act="pnew"><div class="pfface pfadd"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="1.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div><span style="font-size:15px;color:var(--tx2)">Add profile</span></button></div></div>`);
@@ -1529,6 +1554,54 @@ function showLaunchPin(id){
     ${pinDots(false)}${PADH()}
     <div style="display:flex;justify-content:space-between;width:100%;margin-top:24px;font-size:13.5px">
       <button data-act="lpicker" style="color:var(--tx2)">← Back</button><button data-act="pinforgot" style="color:var(--tx2)">Forgot?</button></div></div>`);
+}
+let setupPending=null;
+function showSetup(id){
+  const P=profOf(id); const L=$('#launch'); L.classList.add('on');
+  const isMain=id==='main'; const by=new Date(); by.setMonth(by.getMonth()+7);
+  const f=(fid,l,v,t='text',ex='')=>`<label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">${l}</div><input class="inp" id="${fid}" type="${t}" value="${v}" ${ex}></label>`;
+  L.innerHTML=launchShell(`<div class="inner" style="overflow:auto">
+    <div class="kicker" style="color:var(--volt)">First time · ${esc(P.name)}</div>
+    <div style="font-size:38px;font-weight:300;letter-spacing:-1.2px;line-height:1.05;margin-top:8px">Let's set<br>you up<span style="color:var(--volt)">.</span></div>
+    <div class="sub" style="margin-top:8px">Takes 30 seconds. Then you'll create your private 6-digit passcode.</div>
+    <div class="grid2">${f('su-cur','Current weight (kg)',isMain?'95':'','number','inputmode="decimal" placeholder="e.g. 70"')}${f('su-tgt','Goal weight (kg)',isMain?'81':'','number','inputmode="decimal" placeholder="e.g. 63"')}</div>
+    ${f('su-by','Goal date',isMain?'2027-06-30':ymd(by),'date')}
+    ${isMain?'':`<label style="display:block;margin-top:12px"><div class="muted" style="margin-bottom:5px">Lifting experience — sets starting weights</div><select class="inp" id="su-lvl"><option value="new">New to weights</option><option value="some" selected>Some experience</option><option value="exp">Experienced</option></select></label>`}
+    <div id="su-err" class="sub" style="color:#ff8a8a;margin-top:8px;min-height:20px"></div>
+    <button class="btn p full" style="margin-top:auto" data-act="sunext">Next: create passcode</button>
+    <button class="btn full" style="margin-top:10px;background:transparent;border:0;color:var(--tx2)" data-act="lpicker">← Back</button></div>`);
+}
+function setupNext(){
+  const cur=parseFloat($('#su-cur').value), tgt=parseFloat($('#su-tgt').value), by=$('#su-by').value, lvl=$('#su-lvl')?$('#su-lvl').value:'exp';
+  const err=m=>{ $('#su-err').textContent=m; };
+  if(!(cur>30&&cur<250)) return err('Check your current weight.'); if(!(tgt>30&&tgt<250)) return err('Check your goal weight.'); if(!by) return err('Pick a goal date.');
+  setupPending={id:(setupPending&&setupPending.id)||pin.id,cur,tgt,by,lvl};
+  showCreatePin(setupPending.id);
+}
+function showCreatePin(id){
+  const L=$('#launch'); const P=profOf(id); const i=PROF.list.indexOf(P); const t=TILE[(i<0?0:i)%TILE.length];
+  pin={buf:'',ctx:'lset1',id,first:null,busy:false};
+  L.innerHTML=launchShell(`<div class="inner" style="align-items:center;padding-top:calc(var(--st) + 60px)">
+    <div style="width:76px;height:76px;border-radius:24px;background:linear-gradient(145deg,${t[0]},${t[1]});color:${t[2]};display:grid;place-items:center;font-size:34px;font-weight:600">${esc(P.name.charAt(0).toUpperCase())}</div>
+    <div id="pintitle" style="font-size:28px;font-weight:300;letter-spacing:-.6px;margin-top:18px">Create your passcode</div>
+    <div id="pinmsg" class="sub" style="margin-top:4px;text-align:center">Choose 6 digits only you know.</div>
+    ${pinDots(false)}${PADH()}
+    <div style="display:flex;justify-content:center;width:100%;margin-top:24px;font-size:13.5px"><button data-act="lpicker" style="color:var(--tx2)">← Back</button></div></div>`);
+}
+async function finishSetup(code){
+  const sp=setupPending; const P=profOf(sp.id); if(!P) return;
+  if(sp.id==='main'){
+    let st=fresh(); try{ const raw=localStorage.getItem(storeKey('main')); if(raw) st=Object.assign(fresh(),JSON.parse(raw)); }catch(e){}
+    st.name=P.name; st.goal={start:sp.cur,target:sp.tgt,by:sp.by}; st.weighins=[{d:ymd(today()),kg:sp.cur}]; st.updatedAt=Date.now();
+    try{ localStorage.setItem(storeKey('main'),JSON.stringify(st)); }catch(e){}
+    if(PROF.active==='main') S=Object.assign(fresh(),st);
+  } else {
+    const ns=buildProfileState(P.name,sp.cur,sp.tgt,sp.by,sp.lvl);
+    try{ localStorage.setItem(storeKey(sp.id),JSON.stringify(ns)); }catch(e){}
+  }
+  P.pin=await hashPin(P.id,code); P.setup=true; saveProfiles(); setupPending=null;
+  enterProfile(P.id);
+  setTimeout(()=>say(`Welcome, ${P.name}. Locked in.`),500);
 }
 function closeLaunch(){ const L=$('#launch'); if(!L.classList.contains('on')) return; L.classList.add('fadeout'); setTimeout(()=>{ L.classList.remove('on','fadeout'); L.innerHTML=''; },450); }
 function enterProfile(id){
@@ -1566,7 +1639,8 @@ document.addEventListener('click',ev=>{
     case 'block': go({type:'block',w:5}); break;
     case 'newblock': startNewBlock(); break;
     case 'pk': ensureAudio(); pinPress(b.dataset.v); break;
-    case 'lpick': { const P=profOf(b.dataset.id); if(P&&P.pin) showLaunchPin(P.id); else enterProfile(b.dataset.id); } break;
+    case 'lpick': { const P=profOf(b.dataset.id); pin.id=P.id; if(P&&!P.setup){ setupPending={id:P.id}; showSetup(P.id); } else if(P&&P.pin) showLaunchPin(P.id); else enterProfile(b.dataset.id); } break;
+    case 'sunext': setupNext(); break;
     case 'lpicker': showPicker(); break;
     case 'pinforgot': forgotPin(); break;
     case 'pinwipe': wipeLocked(); break;
