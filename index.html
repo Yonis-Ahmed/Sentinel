@@ -428,7 +428,7 @@ function renderSide(){
   const c=cur(); const w=view.w;
   let h=`<div class="logo"><div class="mark">${ICON.logo}</div><div class="brand">SENTINEL</div></div>`;
   h+=`<button class="nav ${view.type==='hq'?'active':''}" data-act="hq"><div class="ic">${ICON.hq}</div><div class="lbl"><strong>HQ</strong><span>Briefing · stats · talk</span></div></button>`;
-  h+=`<div class="sep"></div><div class="weekbox"><button class="weekbtn" data-act="cycleWeek">W${w}<span class="arr">▾</span></button>
+  h+=`<div class="sep"></div><div class="weekbox"><button class="weekbtn" data-act="cycleWeek" aria-label="Choose week">W${w}<span class="arr">${sideOpen?'▴':'▾'}</span></button>
       <div class="weekpicker">${[1,2,3,4,5].map(n=>`<button class="wp ${n===w?'on':''}" data-act="week" data-w="${n}">${n===5?'DL':n}</button>`).join('')}</div>
       <div class="lbl muted" style="opacity:${sideOpen?1:0};padding:0 4px">${WEEKS[w].tag} · ${WEEKS[w].rpe}</div></div>`;
   DAYS.forEach((d,i)=>{
@@ -597,8 +597,8 @@ document.addEventListener('click',ev=>{
     case 'closeSide': sideOpen=false; renderSide(); break;
     case 'hq': go({type:'hq',w:view.w}); say(briefing()); break;
     case 'day': go({type:'day',w:b.dataset.w?+b.dataset.w:view.w,d:+b.dataset.d}); { const d=DAYS[view.d]; say(isDone(view.w,d.key)?`Operation ${d.name} is already secured. Review or reopen.`:`${d.full} operation: ${d.name}. ${d.ex.length} objectives. Begin with the mobility protocol.`); } break;
-    case 'cycleWeek': view.w = view.w%NUMW+1; render(); say(`Week ${view.w}: ${WEEKS[view.w].tag}. ${WEEKS[view.w].note}`); break;
-    case 'week': view.w=+b.dataset.w; render(); break;
+    case 'cycleWeek': sideOpen=!sideOpen; renderSide(); break;
+    case 'week': view.w=+b.dataset.w; render(); say(`Week ${view.w}: ${WEEKS[view.w].tag}. ${WEEKS[view.w].note} Choose a day.`); break;
     case 'voice': S.voice=!S.voice; save(); render(); if(S.voice) say(briefing(),true); else { try{tts&&tts.stop();speechSynthesis.cancel();}catch(e){} } break;
     case 'fold': if(b.dataset.k==='warm') openWarm=!openWarm; else openCool=!openCool; render(); break;
     case 'chk': { const log=getLog(view.w,DAYS[view.d].key,true); const arr=log[b.dataset.k]; arr[+b.dataset.j]=!arr[+b.dataset.j]; save(); render();
