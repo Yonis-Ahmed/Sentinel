@@ -473,6 +473,12 @@ async function geminiSpeak(text){
   if(gSrc){ try{ gSrc.stop(); }catch(e){} }
   gSrc=actx.createBufferSource(); gSrc.buffer=ab; gSrc.connect(actx.destination); gSrc.start();
 }
+function aiErrText(e){ const m=String(e&&e.message||e||'unknown');
+  if(/^403/.test(m)) return 'key not allowed (403) — check the key is restricted to the Gemini API, not blocked';
+  if(/^429/.test(m)) return 'free limit reached (429) — wait a minute';
+  if(/Failed to fetch|NetworkError|Load failed/i.test(m)) return 'no connection to Google — check your signal';
+  if(m==='nokey') return 'no Gemini key saved in HQ → Settings';
+  return m.length>140?m.slice(0,140)+'…':m; }
 function gErrText(e){ const m=String(e&&e.message||e); return m==='400'?'Key rejected (400) — check it was copied fully.':m==='403'?'Key not allowed (403) — make sure the Gemini API is enabled for it.':m==='429'?'Rate limit hit (429) — free tier is busy, try again in a minute.':m==='nokey'?'No key saved.':'Voice request failed ('+m+').'; }
 async function speakOut(text){
   const t=speakable(text);
@@ -1391,23 +1397,28 @@ async function toggleMic(){
   startDeviceSR();
 }
 async function startRecording(){
-  ensureAudio(); if(!actx) throw new Error('audio');
-  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
-  if(actx.state==='suspended') await actx.resume();
-  const src=actx.createMediaStreamSource(stream); const proc=actx.createScriptProcessor(4096,1,1); const chunks=[];
-  proc.onaudioprocess=e=>{ chunks.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
-  const mute=actx.createGain(); mute.gain.value=0; src.connect(proc); proc.connect(mute); mute.connect(actx.destination);
-  recState={stream,src,proc,mute,chunks,rate:actx.sampleRate};
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+  const A=window.AudioContext||window.webkitAudioContext; if(!A){ stream.getTracks().forEach(t=>t.stop()); throw new Error('audio'); }
+  const ctx=new A(); try{ if(ctx.state!=='running') await ctx.resume(); }catch(e){}
+  const src=ctx.createMediaStreamSource(stream); const proc=ctx.createScriptProcessor(4096,1,1); const chunks=[];
+  let peak=0;
+  proc.onaudioprocess=e=>{ const d=e.inputBuffer.getChannelData(0); const c=new Float32Array(d); chunks.push(c); for(let i=0;i<c.length;i+=32){ const v=Math.abs(c[i]); if(v>peak) peak=v; } recState&&(recState.peak=peak); };
+  const mute=ctx.createGain(); mute.gain.value=0; src.connect(proc); proc.connect(mute); mute.connect(ctx.destination);
+  recState={stream,src,proc,mute,chunks,rate:ctx.sampleRate,ctx,peak:0};
+}
+function showMicError(msg){
+  const el=$('#fhint'); if(el) el.innerHTML='<b style="color:#ff8a8a">'+esc(msg)+'</b> Tap the mic to try again, or type it and tap Break it down.';
 }
 function stopListening(){
   listening=false; clearInterval(recTimer);
   if(recState){ const r=recState; recState=null;
-    try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop());
+    try{ r.proc.disconnect(); r.src.disconnect(); r.mute.disconnect(); }catch(e){} r.stream.getTracks().forEach(t=>t.stop()); try{ r.ctx.close(); }catch(e){}
     const len=r.chunks.reduce((a,c)=>a+c.length,0);
-    if(len < r.rate*0.6){ micUI(); say('Didn\'t catch that.'); return; }
+    if(len < r.rate*0.6){ micUI(); say('Didn\'t catch that.'); showMicError('Recording was too short or empty.'); return; }
+    if((r.peak||0) < 0.004){ micUI(); say('Mic was silent.'); showMicError('The mic recorded silence — check Settings → Safari → Microphone is set to Allow.'); return; }
     const wav=encodeWav(r.chunks,len,r.rate,16000);
     decoding=true; micUI(); say('Decoding.');
-    aiFood({audio:wav}).then(res=>applyAI(res)).catch(e=>{ decoding=false; micUI(); say('Decode failed. '+gErrText(e)); });
+    aiFood({audio:wav}).then(res=>applyAI(res)).catch(e=>{ decoding=false; micUI(); say('Decode failed.'); showMicError('AI decode failed — '+aiErrText(e)+'.'); });
     return;
   }
   if(rec){ try{ rec.stop(); }catch(e){} }
@@ -1450,11 +1461,13 @@ ${mine?'His saved foods — if he mentions one of these, use these exact values 
 Return ONLY JSON: {"transcript": string, "meal": "Breakfast"|"Lunch"|"Snack"|"Dinner"|null, "items":[{"name": string, "brand": string, "amount": string (as he said it, e.g. "3 medium"), "grams": number, "kcal": number, "protein": number, "carbs": number, "fat": number, "confidence": "high"|"medium"|"low"}]}`;
   const parts=[{text:prompt}]; if(audio) parts.push({inlineData:{mimeType:'audio/wav',data:audio}}); else parts.push({text:'He typed: '+text});
   let last='';
-  for(const m of [S.gtext||'gemini-flash-latest','gemini-2.5-flash','gemini-3-flash-preview']){
+  for(const m of [...new Set([S.gtext||'gemini-flash-latest','gemini-flash-latest','gemini-2.5-flash','gemini-3-flash-preview','gemini-2.5-flash-lite'])]){
     const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
       body:JSON.stringify({contents:[{role:'user',parts}],generationConfig:{temperature:0.1,responseMimeType:'application/json'}})});
-    if(r.ok){ const j=await r.json(); const t=((((j.candidates||[])[0]||{}).content||{}).parts||[]).map(p=>p.text||'').join(''); try{ const out=JSON.parse(t.replace(/^```json|```$/g,'').trim()); S.gtext=m; return out; }catch(e){ last='parse'; } }
-    else { last=String(r.status); if(r.status!==404 && r.status!==400) break; }
+    if(r.ok){ const j=await r.json(); const cand=(j.candidates||[])[0]||{}; const t=((cand.content||{}).parts||[]).map(p=>p.text||'').join('');
+      if(!t){ last='empty reply'+(cand.finishReason?' ('+cand.finishReason+')':''); continue; }
+      try{ const i=t.indexOf('{'), k=t.lastIndexOf('}'); const out=JSON.parse(t.slice(i,k+1)); S.gtext=m; return out; }catch(e){ last='unreadable reply'; } }
+    else { let msg=''; try{ const j=await r.json(); msg=(j.error&&j.error.message)||''; }catch(e){} last=r.status+(msg?': '+msg:''); if(r.status!==404 && r.status!==400) break; }
   }
   throw new Error(last||'failed');
 }
@@ -1470,7 +1483,7 @@ function applyAI(res){
   say(items.length?`${items.length} items. ${r0(t.kcal)} kcal.${low?' Check flagged.':''}`:'No foods found.');
 }
 function draftFromText(txt){
-  if(gkey()){ decoding=true; micUI(); aiFood({text:txt}).then(res=>{ if(!res.transcript) res.transcript=txt; applyAI(res); }).catch(e=>{ decoding=false; localDraft(txt); say('AI offline. Used built-in.'); }); return; }
+  if(gkey()){ decoding=true; micUI(); aiFood({text:txt}).then(res=>{ if(!res.transcript) res.transcript=txt; applyAI(res); }).catch(e=>{ decoding=false; localDraft(txt); say('AI offline. Used built-in.'); setTimeout(()=>{ const el=$('#fhint'); if(el) el.innerHTML='<b style="color:#ff8a8a">AI unavailable — '+esc(aiErrText(e))+'.</b> Used the built-in breakdown instead.'; },80); }); return; }
   localDraft(txt);
 }
 function localDraft(txt){
