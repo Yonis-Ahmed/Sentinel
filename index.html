@@ -383,8 +383,41 @@ function speakable(t){
   return t.replace(/(\d)\s?kg\b/g,'$1 kilos').replace(/(\d)×(\d)/g,'$1 by $2').replace(/(\d)–(\d)/g,'$1 to $2')
    .replace(/\bRPE\b/g,'R P E').replace(/(\d)s\b/g,'$1 seconds').replace(/\//g,' of ').replace(/—/g,', ');
 }
+
+/* ---------- Gemini voice (key stays on this device only) ---------- */
+const GVOICES=[['Kore','Firm, confident'],['Despina','Smooth'],['Sulafat','Warm'],['Aoede','Breezy'],['Leda','Youthful'],['Zephyr','Bright'],['Achernar','Soft']];
+const GKEY='sentinel.gkey';
+function gkey(){ try{ return localStorage.getItem(GKEY)||''; }catch(e){ return ''; } }
+const gCache=new Map(); let gSrc=null, gBusy=0;
+async function geminiSpeak(text){
+  const key=gkey(); if(!key) throw new Error('nokey');
+  const voice=S.gvoice||'Kore'; const ck=voice+'|'+text;
+  let buf=gCache.get(ck);
+  if(!buf){
+    const models=[...new Set([S.gmodel||'gemini-3.1-flash-tts-preview','gemini-2.5-flash-preview-tts'])];
+    let data=null, last='';
+    for(const m of models){
+      const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+m+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},
+        body:JSON.stringify({contents:[{parts:[{text:'Read this aloud in a calm, cool, confident mission-control voice — smooth, clear, British English, unhurried: '+text}]}],
+          generationConfig:{responseModalities:['AUDIO'],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}})});
+      if(r.ok){ const j=await r.json(); const part=(((j.candidates||[])[0]||{}).content||{}).parts||[]; const p=part.find(x=>x.inlineData); if(p){ data=p.inlineData; S.gmodel=m; break; } last='empty'; }
+      else { last=String(r.status); if(r.status!==404 && r.status!==400) break; }
+    }
+    if(!data) throw new Error(last||'failed');
+    const rate=+((data.mimeType||'').match(/rate=(\d+)/)||[0,24000])[1];
+    buf={b64:data.data,rate}; gCache.set(ck,buf); if(gCache.size>80) gCache.delete(gCache.keys().next().value);
+  }
+  ensureAudio(); if(!actx) throw new Error('audio');
+  const bin=atob(buf.b64); const n=bin.length>>1; const ab=actx.createBuffer(1,n,buf.rate); const ch=ab.getChannelData(0);
+  for(let i=0;i<n;i++){ let v=bin.charCodeAt(2*i)|(bin.charCodeAt(2*i+1)<<8); if(v>=32768) v-=65536; ch[i]=v/32768; }
+  try{ speechSynthesis.cancel(); }catch(e){}
+  if(gSrc){ try{ gSrc.stop(); }catch(e){} }
+  gSrc=actx.createBufferSource(); gSrc.buffer=ab; gSrc.connect(actx.destination); gSrc.start();
+}
+function gErrText(e){ const m=String(e&&e.message||e); return m==='400'?'Key rejected (400) — check it was copied fully.':m==='403'?'Key not allowed (403) — make sure the Gemini API is enabled for it.':m==='429'?'Rate limit hit (429) — free tier is busy, try again in a minute.':m==='nokey'?'No key saved.':'Voice request failed ('+m+').'; }
 async function speakOut(text){
   const t=speakable(text);
+  if(gkey()){ try{ await geminiSpeak(t); return; }catch(e){ console.warn('gemini voice',e); } }
   try{ if(tts){ await tts.speak(t,{voice:'airy',rate:.95}); return; } }catch(e){}
   try{
     if('speechSynthesis' in window){
@@ -496,7 +529,11 @@ function renderHQ(){
     <div class="lift"><div class="ln">Voice briefings<span>SENTINEL speaks its messages</span></div><button class="btn sm ${S.voice?'p':''}" data-act="voice">${S.voice?'On':'Off'}</button></div>
     <div class="lift"><div class="ln">SENTINEL voice<span>Best female voice picked automatically</span></div><button class="btn sm" data-act="testVoice">Test</button></div>
     <select class="inp" id="vsel" style="margin:4px 0 6px;font-size:15px"></select>
-    <div class="muted">Smoothest option: on your iPhone go to Settings → Accessibility → Spoken Content → Voices → English → choose <b>Serena</b> or <b>Martha</b> (UK) and download the <b>Premium</b> version, then pick it here.</div>
+    <div class="lift" style="margin-top:8px"><div class="ln">AI voice (Google Gemini)<span>${gkey()?'● Key saved on this phone only':'Optional — much more natural voice'}</span></div>${gkey()?'<button class="btn sm" data-act="gclear">Remove key</button>':''}</div>
+    ${gkey()?'':`<div class="weighrow" style="margin-top:4px"><input class="inp" id="gkeyin" type="password" autocomplete="off" placeholder="Paste your Google AI Studio key"><button class="btn p" data-act="gsave">Save</button></div>`}
+    <div class="weighrow" style="margin-top:6px"><select class="inp" id="gvsel" style="font-size:15px">${GVOICES.map(([v,d])=>`<option value="${v}" ${v===(S.gvoice||'Kore')?'selected':''}>${v} — ${d}</option>`).join('')}</select><button class="btn" data-act="gtest">Test</button></div>
+    <div class="muted" id="gstat" style="margin-top:6px">Your key is stored only on this device — never in GitHub or backups. If there's no key or it fails, SENTINEL uses your iPhone voice below.</div>
+    <div class="muted" style="margin-top:10px">Smoothest option: on your iPhone go to Settings → Accessibility → Spoken Content → Voices → English → choose <b>Serena</b> or <b>Martha</b> (UK) and download the <b>Premium</b> version, then pick it here.</div>
     <div class="lift"><div class="ln">Backup<span id="sync">${syncLabel()}</span></div><button class="btn sm" data-act="backup">Copy</button></div>
     <div class="lift"><div class="ln">Reset everything<span>Clears logs, weights and weigh-ins</span></div><button class="btn sm" data-act="reset" style="color:var(--red)">Reset</button></div></div>`;
   return h;
@@ -630,11 +667,15 @@ document.addEventListener('click',ev=>{
     case 'ask': ask(b.dataset.q); break;
     case 'backup': { const t=JSON.stringify(S); navigator.clipboard && navigator.clipboard.writeText(t).then(()=>say('Backup copied to clipboard. Paste it into Notes for safekeeping.')).catch(()=>say('Clipboard was refused on this device.')); } break;
     case 'reset': openConfirmReset(); break;
+    case 'gsave': { const v=($('#gkeyin').value||'').trim(); if(v.length<20){ say('That key looks incomplete.'); break; } try{ localStorage.setItem(GKEY,v); }catch(e){} render(); ensureAudio(); geminiSpeak('SENTINEL voice online. Mission parameters loaded. Ready when you are, Yonis.').then(()=>{ const g=$('#gstat'); if(g) g.textContent='✓ AI voice working.'; }).catch(e=>{ const g=$('#gstat'); if(g) g.textContent=gErrText(e); }); } break;
+    case 'gclear': try{ localStorage.removeItem(GKEY); }catch(e){} gCache.clear(); render(); say('AI voice key removed from this device.'); break;
+    case 'gtest': { const g=$('#gstat'); if(g) g.textContent='Generating…'; geminiSpeak('Mission brief received. Primary objective locked. You are cleared to begin, Yonis.').then(()=>{ const g2=$('#gstat'); if(g2) g2.textContent='✓ Playing '+(S.gvoice||'Kore')+'.'; }).catch(e=>{ const g2=$('#gstat'); if(g2) g2.textContent=gErrText(e); }); } break;
     case 'testVoice': speakOut('SENTINEL online. Mission parameters loaded. Ready when you are, Yonis.'); break;
     case 'doReset': S=fresh(); save(); closeModal(); render(); say('All systems reset. Standing by for a fresh start.'); break;
   }
 });
 document.addEventListener('change',ev=>{
+  if(ev.target.id==='gvsel'){ S.gvoice=ev.target.value; save(); }
   if(ev.target.id==='vsel'){ S.voiceName=ev.target.value; save(); speakOut('Voice confirmed. Standing by.'); }
   if(ev.target.id==='sdate' && ev.target.value){ const d=parseD(ev.target.value); const off=(d.getDay()+6)%7; d.setDate(d.getDate()-off); S.startDate=ymd(d); save(); render(); say('Programme start set to Monday '+d.toLocaleDateString('en-GB',{day:'numeric',month:'long'})+'.'); }
 });
