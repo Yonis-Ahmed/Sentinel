@@ -32,12 +32,13 @@ input{font:inherit;color:inherit}
 
 /* ---------- SIDEBAR ---------- */
 .side{position:fixed;z-index:30;left:0;top:0;bottom:0;width:calc(var(--rail) + var(--sl));padding:calc(var(--st) + 14px) 10px calc(var(--sb) + 14px) calc(var(--sl) + 10px);
-  background:linear-gradient(180deg,#0e1115,#0b0d10);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px;transition:width .28s cubic-bezier(.2,.8,.2,1);overflow:hidden}
+  background:linear-gradient(180deg,#0e1115,#0b0d10);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:8px;transition:width .3s cubic-bezier(.22,.8,.24,1),box-shadow .3s;overflow:hidden;will-change:width;touch-action:pan-y}
 .side.open{width:calc(var(--wide) + var(--sl));box-shadow:20px 0 60px rgba(0,0,0,.6)}
 .logo{display:flex;align-items:center;gap:12px;height:44px;padding-left:2px;margin-bottom:6px}
 .mark{flex:none;width:52px;height:44px;display:grid;place-items:center}
 .mark svg{width:34px;height:34px}
-.brand{font-family:var(--head);font-weight:800;letter-spacing:.18em;font-size:20px;white-space:nowrap;opacity:0;transition:opacity .2s}
+.brand{font-family:var(--head);font-weight:800;letter-spacing:.18em;font-size:20px;white-space:nowrap;opacity:0;transition:opacity .12s}
+.side.open .brand,.side.open .lbl{transition:opacity .2s .1s}
 .side.open .brand,.side.open .lbl{opacity:1}
 .nav{display:flex;align-items:center;gap:12px;height:56px;border-radius:14px;padding:0 0 0 0;position:relative;color:var(--tx2);transition:background .15s,color .15s;width:100%;text-align:left}
 .nav .ic{flex:none;width:56px;height:56px;border-radius:14px;display:grid;place-items:center;font-family:var(--head);font-weight:700;line-height:1;border:1px solid transparent}
@@ -71,8 +72,11 @@ input{font:inherit;color:inherit}
 .scrim.on{opacity:1;pointer-events:auto}
 
 /* ---------- MAIN ---------- */
-main{flex:1;margin-left:calc(var(--rail) + var(--sl));padding:calc(var(--st) + 18px) 16px calc(var(--sb) + 120px);max-width:880px;min-width:0}
-@media(min-width:1000px){main{padding-left:36px;padding-right:36px}}
+main{flex:1;transition:margin-left .3s cubic-bezier(.22,.8,.24,1);margin-left:calc(var(--rail) + var(--sl));padding:calc(var(--st) + 18px) 16px calc(var(--sb) + 120px);max-width:880px;min-width:0}
+@media(min-width:1000px){main{padding-left:36px;padding-right:36px}
+ body.side-open main{margin-left:calc(var(--wide) + var(--sl))}
+ body.side-open .rest{left:calc(var(--wide) + var(--sl) + 12px)}
+ .side.open{box-shadow:none}}
 .hud{position:sticky;top:0;z-index:10;margin:calc(-1 * (var(--st) + 18px)) -16px 16px;padding:calc(var(--st) + 10px) 16px 10px;background:linear-gradient(180deg,rgba(10,12,15,.97) 70%,rgba(10,12,15,0));backdrop-filter:blur(6px)}
 .sentline{display:flex;align-items:center;gap:10px;background:var(--s1);border:1px solid var(--line);border-radius:14px;padding:10px 12px;min-height:46px}
 .eye{flex:none;width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 50% 50%,var(--volt) 0 22%,rgba(212,255,58,.25) 23% 46%,transparent 47%);box-shadow:0 0 14px rgba(212,255,58,.35);animation:pulse 2.8s ease-in-out infinite}
@@ -415,6 +419,7 @@ function renderSide(){
   });
   h+=`<div class="grow"></div><button class="toggle" data-act="toggleSide" aria-label="Expand sidebar">${ICON.chev}</button>`;
   const el=$('#side'); el.innerHTML=h; el.classList.toggle('open',sideOpen);
+  document.body.classList.toggle('side-open',sideOpen);
   $('#scrim').classList.toggle('on',sideOpen && window.innerWidth<1000);
 }
 
@@ -737,6 +742,14 @@ async function ask(q){
   busy=false; if($('#aistate')) $('#aistate').textContent='';
   render();
 }
+
+/* ---------- sidebar gestures ---------- */
+let sx=null, sy=null;
+document.getElementById('side').addEventListener('touchstart',e=>{ sx=e.touches[0].clientX; sy=e.touches[0].clientY; },{passive:true});
+document.getElementById('side').addEventListener('touchend',e=>{ if(sx==null) return; const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+  if(Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)){ if(dx<0 && sideOpen){ sideOpen=false; renderSide(); } else if(dx>0 && !sideOpen){ sideOpen=true; renderSide(); } } sx=null; },{passive:true});
+document.getElementById('scrim').addEventListener('touchstart',()=>{ sideOpen=false; renderSide(); },{passive:true});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape' && sideOpen){ sideOpen=false; renderSide(); } });
 
 /* ---------- boot ---------- */
 window.addEventListener('resize',()=>{ $('#scrim').classList.toggle('on',sideOpen && window.innerWidth<1000); });
