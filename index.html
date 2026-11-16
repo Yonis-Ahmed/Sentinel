@@ -365,26 +365,44 @@ function typeOut(el,text){
   clearInterval(typeT); let i=0; el.innerHTML='<span class="who">SENTINEL&gt;</span><span id="stx"></span>';
   const tx=$('#stx'); typeT=setInterval(()=>{ i+=2; tx.textContent=text.slice(0,i); if(i>=text.length) clearInterval(typeT); },14);
 }
+const FEMALE=/Serena|Martha|Kate|Stephanie|Sonia|Libby|Hazel|Susan|Fiona|Moira|Karen|Tessa|Samantha|Ava|Allison|Zoe|Victoria|Nicky|Female/i;
+function enVoices(){ try{ return speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang)); }catch(e){ return []; } }
+function voiceScore(v){ return (FEMALE.test(v.name)?20:0)+(/Premium|Enhanced|Natural|Neural|Siri/i.test(v.name)?12:0)+(/en-GB/i.test(v.lang)?6:0)+(/Serena|Martha|Sonia|Libby|Kate/i.test(v.name)?4:0)+(v.localService?1:0); }
+function pickVoice(){
+  const vs=enVoices(); if(!vs.length) return null;
+  if(S.voiceName){ const v=vs.find(v=>v.name===S.voiceName); if(v) return v; }
+  return [...vs].sort((a,b)=>voiceScore(b)-voiceScore(a))[0];
+}
+function speakable(t){
+  return t.replace(/(\d)\s?kg\b/g,'$1 kilos').replace(/(\d)×(\d)/g,'$1 by $2').replace(/(\d)–(\d)/g,'$1 to $2')
+   .replace(/\bRPE\b/g,'R P E').replace(/(\d)s\b/g,'$1 seconds').replace(/\//g,' of ').replace(/—/g,', ');
+}
 async function speakOut(text){
-  try{ if(tts){ await tts.speak(text,{voice:'glassy'}); return; } }catch(e){}
+  const t=speakable(text);
+  try{ if(tts){ await tts.speak(t,{voice:'airy',rate:.95}); return; } }catch(e){}
   try{
     if('speechSynthesis' in window){
-      speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text);
-      const v=speechSynthesis.getVoices().find(v=>/en-GB/i.test(v.lang)&&/Daniel|Arthur|Male/i.test(v.name)) || speechSynthesis.getVoices().find(v=>/en-GB/i.test(v.lang));
-      if(v) u.voice=v; u.rate=1.02; u.pitch=.9; speechSynthesis.speak(u);
+      speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(t);
+      const v=pickVoice(); if(v){ u.voice=v; u.lang=v.lang; } else u.lang='en-GB';
+      u.rate=.94; u.pitch=1.04; u.volume=1; speechSynthesis.speak(u);
     }
   }catch(e){}
 }
+try{ speechSynthesis.onvoiceschanged=()=>{ const sel=document.getElementById('vsel'); if(sel) fillVoices(sel); }; }catch(e){}
+function fillVoices(sel){
+  const vs=[...enVoices()].sort((a,b)=>voiceScore(b)-voiceScore(a)); const cur=pickVoice();
+  sel.innerHTML = vs.length ? vs.map(v=>`<option value="${esc(v.name)}" ${cur&&v.name===cur.name?'selected':''}>${esc(v.name)} · ${esc(v.lang)}</option>`).join('') : '<option>Default voice</option>';
+}
 function briefing(){
   const c=cur(); const kgLeft=(latestWeight()-GOAL.target).toFixed(1);
-  if(c.before) return `${greet()}, Yonis. Programme begins ${parseD(S.startDate).toDateString().slice(0,10)}. Systems ready.`;
-  if(c.after) return `${greet()}, Yonis. Block one complete — ${doneCount()} of 20 sessions logged. Time to plan block two.`;
-  if(c.di<0) return `${greet()}, Yonis. Recovery day. Week ${c.w} stands at ${DAYS.filter(d=>isDone(c.w,d.key)).length}/4. ${kgLeft}kg to target. Eat your protein, sleep well.`;
+  if(c.before) return `${greet()}, Yonis. Operation begins ${parseD(S.startDate).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}. All systems ready on your mark.`;
+  if(c.after) return `${greet()}, Yonis. Phase one complete. ${doneCount()} of 20 missions logged. Awaiting orders for phase two.`;
+  if(c.di<0) return `${greet()}, Yonis. Stand down today. Recovery is part of the mission. Week ${c.w} status: ${DAYS.filter(d=>isDone(c.w,d.key)).length} of 4 complete. ${kgLeft}kg to target. Fuel up, sleep well.`;
   const d=DAYS[c.di];
-  if(isDone(c.w,d.key)) return `Session logged, Yonis. Day ${c.di+1} of week ${c.w} is in the bank. Streak: ${streak()}.`;
+  if(isDone(c.w,d.key)) return `Mission complete, Yonis. Day ${c.di+1} of week ${c.w} is secured. Streak holding at ${streak()}.`;
   const lead=d.ex[0]; const W=WEEKS[c.w];
   const reps=lead[2]===lead[3]?lead[2]:lead[2]+'–'+lead[3];
-  return `${greet()}, Yonis. Week ${c.w}, ${d.name}. Lead lift: ${EX[lead[0]].n}, ${setsFor(c.w,0,lead[1])}×${reps} at ${fmtKg(workW(c.w,lead[0]))}kg, ${W.rpe}. ${kgLeft}kg to target. Sixty minutes. Let's work.`;
+  return `${greet()}, Yonis. Mission brief: week ${c.w}, operation ${d.name}. Primary objective, ${EX[lead[0]].n}, ${setsFor(c.w,0,lead[1])}×${reps} at ${fmtKg(workW(c.w,lead[0]))}kg. Intensity ${W.rpe}. ${kgLeft}kg to target. Sixty minutes on the clock. You're cleared to begin.`;
 }
 
 /* ================= VIEW STATE ================= */
@@ -467,6 +485,9 @@ function renderHQ(){
   h+=`<h2>Settings</h2><div class="card">
     <div class="lift"><div class="ln">Programme start (Monday)<span>Week 1 Day 1 lands on this date</span></div><input class="inp" style="width:170px;height:42px;font-size:15px" type="date" id="sdate" value="${S.startDate}"></div>
     <div class="lift"><div class="ln">Voice briefings<span>SENTINEL speaks its messages</span></div><button class="btn sm ${S.voice?'p':''}" data-act="voice">${S.voice?'On':'Off'}</button></div>
+    <div class="lift"><div class="ln">SENTINEL voice<span>Best female voice picked automatically</span></div><button class="btn sm" data-act="testVoice">Test</button></div>
+    <select class="inp" id="vsel" style="margin:4px 0 6px;font-size:15px"></select>
+    <div class="muted">Smoothest option: on your iPhone go to Settings → Accessibility → Spoken Content → Voices → English → choose <b>Serena</b> or <b>Martha</b> (UK) and download the <b>Premium</b> version, then pick it here.</div>
     <div class="lift"><div class="ln">Backup<span id="sync">${syncLabel()}</span></div><button class="btn sm" data-act="backup">Copy</button></div>
     <div class="lift"><div class="ln">Reset everything<span>Clears logs, weights and weigh-ins</span></div><button class="btn sm" data-act="reset" style="color:var(--red)">Reset</button></div></div>`;
   return h;
@@ -550,7 +571,7 @@ function render(){
   renderSide();
   const m=$('#main');
   m.innerHTML = view.type==='hq' ? renderHQ() : renderDay();
-  if(view.type==='hq') drawChat();
+  if(view.type==='hq'){ drawChat(); const vs=$('#vsel'); if(vs) fillVoices(vs); }
   const el=$('#smsg'); if(el && lastMsg) el.innerHTML='<span class="who">SENTINEL&gt;</span>'+esc(lastMsg);
   tickClock();
 }
@@ -559,7 +580,7 @@ function render(){
 function go(v){ view=v; if(window.innerWidth<1000) sideOpen=false; render(); window.scrollTo({top:0,behavior:'instant'}); }
 function setRecord(w,dk,key,s){ const log=getLog(w,dk,true); log.sets[key]=log.sets[key]||[]; log.sets[key][s]=log.sets[key][s]||{}; return log.sets[key][s]; }
 
-const COMPLIMENTS=['Clean set.','Logged. Stay tight.','Good. Breathe, reset.','Strong. Next one.','That\'s the standard.','Noted. Keep the bar honest.'];
+const COMPLIMENTS=['Set confirmed.','Clean execution.','Target hit. Reset.','Logged. Stay locked in.','Smooth. Hold that standard.','Copy that. Next set on my mark.'];
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-act]'); if(!b) return;
   const a=b.dataset.act;
@@ -569,23 +590,23 @@ document.addEventListener('click',ev=>{
     case 'toggleSide': sideOpen=!sideOpen; renderSide(); break;
     case 'closeSide': sideOpen=false; renderSide(); break;
     case 'hq': go({type:'hq',w:view.w}); say(briefing()); break;
-    case 'day': go({type:'day',w:b.dataset.w?+b.dataset.w:view.w,d:+b.dataset.d}); { const d=DAYS[view.d]; say(isDone(view.w,d.key)?`Week ${view.w} ${d.name} is already logged. Review or reopen.`:`${d.full}: ${d.name}. ${d.ex.length} lifts. Start with the warm-up.`); } break;
+    case 'day': go({type:'day',w:b.dataset.w?+b.dataset.w:view.w,d:+b.dataset.d}); { const d=DAYS[view.d]; say(isDone(view.w,d.key)?`Operation ${d.name} is already secured. Review or reopen.`:`${d.full} operation: ${d.name}. ${d.ex.length} objectives. Begin with the mobility protocol.`); } break;
     case 'cycleWeek': view.w = view.w%NUMW+1; render(); say(`Week ${view.w}: ${WEEKS[view.w].tag}. ${WEEKS[view.w].note}`); break;
     case 'week': view.w=+b.dataset.w; render(); break;
     case 'voice': S.voice=!S.voice; save(); render(); if(S.voice) say(briefing(),true); else { try{tts&&tts.stop();speechSynthesis.cancel();}catch(e){} } break;
     case 'fold': if(b.dataset.k==='warm') openWarm=!openWarm; else openCool=!openCool; render(); break;
     case 'chk': { const log=getLog(view.w,DAYS[view.d].key,true); const arr=log[b.dataset.k]; arr[+b.dataset.j]=!arr[+b.dataset.j]; save(); render();
-      const items=b.dataset.k==='warm'?WARM:COOL; if(arr.filter(Boolean).length===items.length) say(b.dataset.k==='warm'?'Mobility complete. Body is primed. First lift — ramp up properly.':'Cool-down done. That is how you stay in this for the long game.'); } break;
-    case 'start': { const log=getLog(view.w,DAYS[view.d].key,true); log.startedAt=Date.now(); save(); render(); say('Clock running. Sixty minutes. No phone scrolling between sets.'); } break;
+      const items=b.dataset.k==='warm'?WARM:COOL; if(arr.filter(Boolean).length===items.length) say(b.dataset.k==='warm'?'Mobility protocol complete. Systems primed. Proceed to the first lift and ramp up clean.':'Cool-down complete. Mission closed out properly. That is how we win the long game.'); } break;
+    case 'start': { const log=getLog(view.w,DAYS[view.d].key,true); log.startedAt=Date.now(); save(); render(); say('Clock is live. Sixty minutes. Phone down between sets. Let\'s execute.'); } break;
     case 'reopen': { const log=getLog(view.w,DAYS[view.d].key,true); log.done=false; save(); render(); say('Session reopened. Weight increases already applied stay in place.'); } break;
     case 'rep': { const d=DAYS[view.d]; const e=d.ex[+b.dataset.k]; const r=setRecord(view.w,d.key,b.dataset.ex+'@'+b.dataset.k,+b.dataset.s);
       const cur=r.r!=null?r.r:e[3]; r.r=Math.max(0,Math.min(30,cur+(+b.dataset.v))); save(); render(); } break;
     case 'set': { const d=DAYS[view.d]; const k=+b.dataset.k; const e=d.ex[k]; const id=b.dataset.ex; const r=setRecord(view.w,d.key,id+'@'+k,+b.dataset.s);
       if(r.done){ r.done=false; } else { r.done=true; if(r.r==null) r.r=e[3]; r.w=workW(view.w,id); startRest(+b.dataset.rest);
         const log=getLog(view.w,d.key,true); if(!log.startedAt) log.startedAt=Date.now();
-        if(r.r<e[2] && EX[id].t!=='time' && EX[id].t!=='carry') say(`${r.r} reps — below range. Hold the weight; own it before we add more.`);
-        else if(r.r>=e[3]+3 && EX[id].t!=='bw') say(`${r.r} reps? That's too light. Tap the weight and raise it — every day with ${EX[id].n} will follow.`);
-        else say(COMPLIMENTS[Math.floor(Math.random()*COMPLIMENTS.length)]+' Rest '+e[4]+'s.');
+        if(r.r<e[2] && EX[id].t!=='time' && EX[id].t!=='carry') say(`${r.r} reps. Below target range. We hold this weight until you own it.`);
+        else if(r.r>=e[3]+3 && EX[id].t!=='bw') say(`${r.r} reps. That load is too light for you. Tap the weight and raise it. Every day with ${EX[id].n} will update.`);
+        else say(COMPLIMENTS[Math.floor(Math.random()*COMPLIMENTS.length)]+' Rest '+e[4]+' seconds.');
       } save(); render(); } break;
     case 'complete': complete(); break;
     case 'editW': openEdit(b.dataset.id); break;
@@ -600,10 +621,12 @@ document.addEventListener('click',ev=>{
     case 'ask': ask(b.dataset.q); break;
     case 'backup': { const t=JSON.stringify(S); navigator.clipboard && navigator.clipboard.writeText(t).then(()=>say('Backup copied to clipboard. Paste it into Notes for safekeeping.')).catch(()=>say('Clipboard was refused on this device.')); } break;
     case 'reset': openConfirmReset(); break;
-    case 'doReset': S=fresh(); save(); closeModal(); render(); say('All systems reset. Fresh start.'); break;
+    case 'testVoice': speakOut('SENTINEL online. Mission parameters loaded. Ready when you are, Yonis.'); break;
+    case 'doReset': S=fresh(); save(); closeModal(); render(); say('All systems reset. Standing by for a fresh start.'); break;
   }
 });
 document.addEventListener('change',ev=>{
+  if(ev.target.id==='vsel'){ S.voiceName=ev.target.value; save(); speakOut('Voice confirmed. Standing by.'); }
   if(ev.target.id==='sdate' && ev.target.value){ const d=parseD(ev.target.value); const off=(d.getDay()+6)%7; d.setDate(d.getDate()-off); S.startDate=ymd(d); save(); render(); say('Programme start set to Monday '+d.toLocaleDateString('en-GB',{day:'numeric',month:'long'})+'.'); }
 });
 document.addEventListener('keydown',ev=>{
@@ -637,7 +660,7 @@ function complete(){
   }
   log.done=true; log.completedAt=Date.now(); if(!log.startedAt) log.startedAt=log.completedAt;
   const mins=Math.round((log.completedAt-log.startedAt)/60000);
-  let sum = `Session ${doneCount()} of 20 complete${mins>1?' in '+mins+' minutes':''}. `;
+  let sum = `Mission complete. Session ${doneCount()} of 20${mins>1?' in '+mins+' minutes':''}. `;
   if(WEEKS[w].deload) sum+='Deload logged — loads stay put.';
   else if(ups.length) sum+='Progressive overload applied: '+ups.join(', ')+'. Every day using these lifts is updated.';
   else sum+='No increases this time — repeat the weights and chase the top of the range.';
@@ -665,7 +688,7 @@ function saveEdit(){
   // also update any not-yet-ticked sets: they read live, ticked sets keep their logged weight
   save(); closeModal(); render();
   const uses=DAYS.filter(d=>d.ex.some(e=>e[0]===id)).map(d=>d.full).join(' and ');
-  say(`${EX[id].n} ${v>old?'raised':'set'} to ${fmtKg(S.weights[id])}${EX[id].t==='time'?'s':'kg'} on ${uses}. Progression continues from here.`);
+  say(`Copy. ${EX[id].n} ${v>old?'raised':'set'} to ${fmtKg(S.weights[id])}${EX[id].t==='time'?'s':'kg'} on ${uses}. Progression continues from here.`);
 }
 function closeModal(){ $('#modal').classList.remove('on'); }
 function openConfirmReset(){
@@ -683,7 +706,8 @@ function tickRest(){
   const left=Math.max(0,rest.end-Date.now()); const s=Math.ceil(left/1000);
   $('#restt').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
   $('#ringc').setAttribute('stroke-dashoffset', (138.2*(1-left/(rest.total*1000))).toFixed(1));
-  if(left<=0){ stopRest(); beep(); say('Rest over. Next set.'); }
+  if(S.voice && s===10 && !rest.warned){ rest.warned=true; speakOut('Ten seconds.'); }
+  if(left<=0){ stopRest(); beep(); say('Rest complete. Back on the bar.'); }
 }
 function tickClock(){
   const el=$('#clock'); if(!el || view.type!=='day') return;
