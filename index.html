@@ -658,8 +658,9 @@ function stepsHQCard(){
      <div style="flex:1"><div style="font-size:30px;font-weight:300;letter-spacing:-1px">${n.toLocaleString('en-GB')}</div><div class="sub" style="font-size:13px">of ${g.toLocaleString('en-GB')} today${n>=g?' · <b style="color:var(--volt)">goal hit</b>':''}</div></div>
    </div>
    <div style="display:flex;align-items:flex-end;justify-content:space-between;height:64px;margin-top:14px;gap:6px">${days.map((x,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:100%;max-width:26px;height:${Math.max(3,Math.round(x.n/mx*48))}px;border-radius:7px;background:${x.n>=g?'#c8f56a':i===6?'rgba(200,245,106,.5)':'rgba(255,255,255,.18)'}"></div><span style="font-size:10px;color:var(--tx3)">${x.d.toLocaleDateString('en-GB',{weekday:'narrow'})}</span></div>`).join('')}</div>
-   <div class="grid2" style="margin-top:14px"><button class="btn sm p" data-act="stimport">Import from Health</button><button class="btn sm" data-act="stadd">Enter manually</button></div>
-   <button class="muted" style="margin-top:10px;width:100%;text-align:center" data-act="sthelp">How to set up the Health shortcut</button></div>`;
+   ${(!n && new Date().getHours()>=18)?'<div class="sub" style="margin-top:12px;color:var(--volt)">Evening check-in: what did your Health app say today?</div>':''}
+   <div class="weighrow" style="margin-top:12px"><input class="inp" id="st-quick" type="number" inputmode="numeric" placeholder="${n?'Update today\'s steps':'Today\'s steps, e.g. 8432'}"><button class="btn p" data-act="stquick">Save</button></div>
+   <div style="display:flex;justify-content:space-between;margin-top:10px"><button class="muted" data-act="stadd">Other day · goal</button><button class="muted" data-act="stimport">Import from Health</button></div></div>`;
 }
 function openStepSheet(){
   const t=ymd(today());
@@ -700,6 +701,7 @@ document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-act]'); if(!b) return;
   switch(b.dataset.act){
     case 'stadd': openStepSheet(); break;
+    case 'stquick': { const n=parseStepsText($('#st-quick').value); if(n==null||n>200000){ $('#st-quick').style.borderColor='#ff6b6b'; break; } setSteps(ymd(today()),n); render(); say(`${n.toLocaleString('en-GB')} steps logged.`); } break;
     case 'stimport': importSteps(); break;
     case 'sthelp': openStepHelp(); break;
     case 'stsave': { const d=$('#st-date').value||ymd(today()), n=parseFloat($('#st-n').value), g=parseFloat($('#st-goal').value);
@@ -926,6 +928,7 @@ document.addEventListener('change',ev=>{
 document.addEventListener('keydown',ev=>{
   if(ev.key==='Enter' && ev.target.id==='ask'){ const q=ev.target.value.trim(); if(q){ ev.target.value=''; ask(q);} }
   if(ev.key==='Enter' && ev.target.id==='wkg'){ $('[data-act=weigh]').click(); }
+  if(ev.key==='Enter' && ev.target.id==='st-quick'){ $('[data-act=stquick]').click(); }
   if(ev.key==='Enter' && ev.target.id==='mval'){ saveEdit(); }
 });
 
